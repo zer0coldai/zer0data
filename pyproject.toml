@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "zer0data"
+version = "0.1.0"
+description = "Binance perpetual futures data platform"
+authors = ["zer0data"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0"
+pytest-cov = "^4.1"
+black = "^24.0"
+ruff = "^0.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

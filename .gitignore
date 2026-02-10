@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.poetry/
+
+# Data
+data/download/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Environment
+.env
+
+# ClickHouse
+clickhouse_data/
