@@ -2,20 +2,19 @@ CREATE DATABASE IF NOT EXISTS zer0data;
 
 USE zer0data;
 
-CREATE TABLE IF NOT EXISTS klines_1m (
+CREATE TABLE IF NOT EXISTS klines (
     symbol String,
-    open_time DateTime,
-    close_time DateTime,
-    open_price Decimal64(8),
-    high_price Decimal64(8),
-    low_price Decimal64(8),
-    close_price Decimal64(8),
-    volume Decimal64(8),
-    quote_volume Decimal64(8),
+    open_time UInt64,
+    close_time UInt64,
+    open_price Float64,
+    high_price Float64,
+    low_price Float64,
+    close_price Float64,
+    volume Float64,
+    quote_volume Float64,
     trades_count UInt32,
-    taker_buy_volume Decimal64(8),
-    taker_buy_quote_volume Decimal64(8)
+    taker_buy_volume Float64,
+    taker_buy_quote_volume Float64
 ) ENGINE = MergeTree()
-PARTITION BY toYYYYMM(open_time)
 ORDER BY (symbol, open_time)
 SETTINGS index_granularity = 8192;
