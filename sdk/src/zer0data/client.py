@@ -2,8 +2,22 @@
 zer0data Client - Main interface for data access
 """
 
+from dataclasses import dataclass
 from typing import Optional
 import clickhouse_connect
+
+from zer0data.kline import KlineService
+
+
+@dataclass
+class ClientConfig:
+    """Configuration for zer0data client"""
+
+    host: str = "localhost"
+    port: int = 8123
+    username: str = "default"
+    password: str = ""
+    database: str = "zer0data"
 
 
 class Client:
@@ -13,9 +27,9 @@ class Client:
         self,
         host: str = "localhost",
         port: int = 8123,
-        database: str = "zer0data",
         username: str = "default",
         password: str = "",
+        database: str = "zer0data",
     ):
         """
         Initialize ClickHouse client
@@ -27,107 +41,38 @@ class Client:
             username: Username
             password: Password
         """
-        self.client = clickhouse_connect.get_client(
+        self.config = ClientConfig(
+            host=host,
+            port=port,
+            username=username,
+            password=password,
+            database=database,
+        )
+        self._client = clickhouse_connect.get_client(
             host=host,
             port=port,
             database=database,
             username=username,
             password=password,
         )
-        self.database = database
+        self._kline: Optional[KlineService] = None
 
-    def get_trades(
-        self,
-        symbol: str,
-        start_date: str,
-        end_date: str,
-    ):
-        """
-        Fetch historical trades
-
-        Args:
-            symbol: Trading pair symbol (e.g., 'BTCUSDT')
-            start_date: Start date (ISO format)
-            end_date: End date (ISO format)
-
-        Returns:
-            Polars DataFrame with trade data
-        """
-        query = f"""
-        SELECT *
-        FROM {self.database}.trades
-        WHERE symbol = '{symbol}'
-          AND event_time >= parseDateTimeBestEffort('{start_date}')
-          AND event_time < parseDateTimeBestEffort('{end_date}')
-        ORDER BY event_time
-        """
-        result = self.client.query(query)
-        return result.result_pl
-
-    def get_liquidations(
-        self,
-        symbol: str,
-        start_date: str,
-        end_date: str,
-    ):
-        """
-        Fetch liquidations
-
-        Args:
-            symbol: Trading pair symbol
-            start_date: Start date (ISO format)
-            end_date: End date (ISO format)
-
-        Returns:
-            Polars DataFrame with liquidation data
-        """
-        query = f"""
-        SELECT *
-        FROM {self.database}.liquidations
-        WHERE symbol = '{symbol}'
-          AND event_time >= parseDateTimeBestEffort('{start_date}')
-          AND event_time < parseDateTimeBestEffort('{end_date}')
-        ORDER BY event_time
-        """
-        result = self.client.query(query)
-        return result.result_pl
-
-    def get_funding_rates(
-        self,
-        symbol: str,
-        interval: str = "1h",
-    ):
-        """
-        Get aggregated funding rates
-
-        Args:
-            symbol: Trading pair symbol
-            interval: Time aggregation ('1h', '4h', '1d')
-
-        Returns:
-            Polars DataFrame with funding rate data
-        """
-        query = f"""
-        SELECT *
-        FROM {self.database}.funding_rates_agg
-        WHERE symbol = '{symbol}' AND interval = '{interval}'
-        ORDER BY window_start
-        """
-        result = self.client.query(query)
-        return result.result_pl
-
-    def query(self, sql: str):
-        """
-        Execute custom SQL query
-
-        Args:
-            sql: SQL query string
-
-        Returns:
-            Query result
-        """
-        return self.client.query(sql)
+    @property
+    def kline(self) -> KlineService:
+        """Get the kline service"""
+        if self._kline is None:
+            self._kline = KlineService(self._client, self.config.database)
+        return self._kline
 
     def close(self):
         """Close the client connection"""
-        self.client.close()
+        self._client.close()
+
+    def __enter__(self):
+        """Context manager entry"""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit"""
+        self.close()
+        return False
