@@ -24,6 +24,11 @@ mypy = "^1.8"
 [tool.poetry.scripts]
 zer0data-ingestor = "zer0data_ingestor.cli:cli"
 
+[tool.pytest.ini_options]
+markers = [
+    "integration: marks tests as integration tests (requires docker-compose)",
+]
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
