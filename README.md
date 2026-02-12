@@ -34,8 +34,10 @@ docker compose -f docker/ingestor/compose.yml build
 
 ```bash
 docker compose -f docker/downloader/compose.yml run --rm downloader \
-  --type futures --symbols BTCUSDT --interval 1m --date 2024-01-01
+  -t um -s BTCUSDT -i 1m -d 2024-01-01
 ```
+
+`download-kline.py` 使用短参数：`-t`(市场类型：`spot`/`um`/`cm`)、`-s`(交易对)、`-i`(周期)、`-d`(日期)。
 
 ### 5. 入库到 ClickHouse
 

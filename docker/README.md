@@ -42,8 +42,10 @@ docker compose -f ingestor/compose.yml build
 
 ```bash
 docker compose -f downloader/compose.yml run --rm downloader \
-  --type futures --symbols BTCUSDT --interval 1m --date 2024-01-01
+  -t um -s BTCUSDT -i 1m -d 2024-01-01
 ```
+
+`download-kline.py` 参数为 `-t/-s/-i/-d`，其中永续合约对应 `-t um`（USD-M futures）。
 
 ### Ingest to Database
 
