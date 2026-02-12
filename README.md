@@ -66,6 +66,44 @@ print(Client().kline.query(
 ).head())
 ```
 
+## Docker 部署
+
+### 1. 创建数据目录
+
+```bash
+sudo mkdir -p /data/clickhouse /data/download
+sudo chown $USER:$USER /data/clickhouse /data/download
+```
+
+### 2. 启动 ClickHouse
+
+```bash
+docker compose -f docker/clickhouse/compose.yml up -d
+```
+
+### 3. 构建镜像
+
+```bash
+docker compose -f docker/downloader/compose.yml build
+docker compose -f docker/ingestor/compose.yml build
+```
+
+### 4. 下载数据
+
+```bash
+docker compose -f docker/downloader/compose.yml run --rm downloader \
+  --type futures --symbols BTCUSDT --interval 1m --date 2024-01-01
+```
+
+### 5. 入库
+
+```bash
+docker compose -f docker/ingestor/compose.yml run --rm ingestor \
+  ingest-from-dir --source /data --symbols BTCUSDT
+```
+
+详细文档请参考 [Docker 部署指南](docker/README.md)
+
 ## 项目结构
 
 ```
