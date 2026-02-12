@@ -2,7 +2,7 @@ services:
   downloader:
     build:
       context: ../../binance-public-data/python
-      dockerfile: ../../../docker/downloader/Dockerfile
+      dockerfile: ../../docker/downloader/Dockerfile
     container_name: zer0data-downloader
     volumes:
       - /data/download:/data
