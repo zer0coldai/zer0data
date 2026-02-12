@@ -7,7 +7,7 @@ venv/
 .poetry/
 
 # Data
-data/download/
+data/
 *.log
 
 # IDE
