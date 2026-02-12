@@ -17,13 +17,43 @@
 docker-compose up -d
 ```
 
-### 2. 安装 SDK
+### 2. 下载 K 线数据
 
 ```bash
-pip install zer0data
+# 添加 submodule 并初始化
+git submodule update --init --recursive
+
+# 进入 binance-public-data 目录
+cd binance-public-data/python
+
+# 安装依赖
+pip install -r requirements.txt
+
+# 下载永续合约 1 分钟 K 线数据
+STORE_DIRECTORY=../../data/download \
+./download-kline.py \
+  --type futures \
+  --symbols BTCUSDT,ETHUSDT \
+  --interval 1m \
+  --date 2024-01-01
 ```
 
-### 3. 查询数据
+### 3. 入库到 ClickHouse
+
+```bash
+# 返回项目根目录
+cd ../..
+
+# 安装 ingestor
+pip install zer0data-ingestor
+
+# 解析并入库已下载的文件
+zer0data-ingestor ingest-from-dir \
+  --source ./data/download \
+  --symbols BTCUSDT,ETHUSDT
+```
+
+### 4. 查询数据
 
 ```python
 from datetime import datetime, timedelta
@@ -34,13 +64,6 @@ print(Client().kline.query(
     start=datetime.now()-timedelta(days=7),
     end=datetime.now()
 ).head())
-```
-
-### 4. 回补数据
-
-```bash
-cd ingestor && poetry install
-zer0data-ingestor backfill --symbols BTCUSDT,ETHUSDT --start-date 2023-01-01 --end-date 2024-12-31
 ```
 
 ## 项目结构
