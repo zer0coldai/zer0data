@@ -66,15 +66,18 @@ class KlineIngestor:
             raise RuntimeError("Ingestor has been closed")
 
         stats = IngestStats()
+        symbols_seen = set()
 
         try:
             # Parse all matching files in the directory
             for symbol, record in self.parser.parse_directory(source, symbols, pattern):
                 self.writer.insert(record)
                 stats.records_written += 1
+                symbols_seen.add(symbol)
 
             # Track the directory as processed
             stats.files_processed = 1
+            stats.symbols_processed = len(symbols_seen)
 
         except Exception as e:
             error_msg = f"Error processing directory {source}: {e}"
