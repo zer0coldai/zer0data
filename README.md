@@ -11,13 +11,66 @@
 
 ## 快速开始
 
+### 1. 创建数据目录
+
+```bash
+sudo mkdir -p /data/clickhouse /data/download
+sudo chown $USER:$USER /data/clickhouse /data/download
+```
+
+### 2. 启动 ClickHouse
+
+```bash
+docker compose -f docker/clickhouse/compose.yml up -d
+```
+
+### 3. 构建服务镜像
+
+```bash
+docker compose -f docker/downloader/compose.yml build
+docker compose -f docker/ingestor/compose.yml build
+```
+
+### 4. 下载 K 线数据
+
+```bash
+docker compose -f docker/downloader/compose.yml run --rm downloader \
+  --type futures --symbols BTCUSDT --interval 1m --date 2024-01-01
+```
+
+### 5. 入库到 ClickHouse
+
+```bash
+docker compose -f docker/ingestor/compose.yml run --rm ingestor \
+  ingest-from-dir --source /data --symbols BTCUSDT
+```
+
+### 6. 查询数据
+
+```python
+from zer0data import Client
+from datetime import datetime
+
+df = Client().kline.query(
+    symbols=['BTCUSDT'],
+    start=datetime(2024, 1, 1),
+    end=datetime(2024, 1, 2)
+)
+print(df)
+```
+
+详细文档请参考 [Docker 部署指南](docker/README.md)
+
 ## 项目结构
 
 ```
 zer0data/
 ├── sdk/                    # Python SDK
 ├── ingestor/               # 数据采集服务
-├── docker-compose.yml      # ClickHouse 部署
+├── docker/                 # Docker 部署配置
+│   ├── clickhouse/         # ClickHouse 服务
+│   ├── downloader/         # 数据下载服务
+│   └── ingestor/           # 数据入库服务
 └── docs/
     ├── plans/              # 设计文档和实施计划
     └── ...
