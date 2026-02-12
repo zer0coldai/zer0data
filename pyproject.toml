@@ -2,7 +2,7 @@
 name = "zer0data"
 version = "0.1.0"
 description = "Binance perpetual futures data platform"
-authors = ["zer0data"]
+authors = [{ name = "zer0data" }]
 readme = "README.md"
 
 requires-python = ">=3.11"
@@ -31,9 +31,6 @@ build-backend = "hatchling.build"
 # Use uv for dependency management
 dev-mode-dirs = ["."]
 dev-mode = "uv"
-
-[tool.uv]
-type = "uv"
 
 [tool.ruff]
 line-length = 100

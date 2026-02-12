@@ -86,8 +86,8 @@ def cli(
 )
 @click.option(
     "--pattern",
-    default="*.zip",
-    help="File pattern to match (default: *.zip)",
+    default="**/*.zip",
+    help="File pattern to match (default: **/*.zip)",
 )
 @click.pass_context
 def ingest_from_dir(

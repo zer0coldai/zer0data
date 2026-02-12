@@ -1,8 +1,8 @@
 services:
   ingestor:
     build:
-      context: ../../ingestor
-      dockerfile: ../docker/ingestor/Dockerfile
+      context: ../..
+      dockerfile: docker/ingestor/Dockerfile
     container_name: zer0data-ingestor
     volumes:
       - ../../data/download:/data

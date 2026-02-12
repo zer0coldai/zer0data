@@ -169,3 +169,26 @@ def test_ingestor_close_after_closed(ingestor_config):
         ingestor.close()
 
         assert mock_writer.close.call_count == 1
+
+
+def test_ingest_from_directory_uses_recursive_default_pattern(ingestor_config):
+    """Default pattern should recurse into nested download directories."""
+    with patch("zer0data_ingestor.ingestor.KlineParser") as mock_parser_cls, \
+         patch("zer0data_ingestor.ingestor.ClickHouseWriter") as mock_writer_cls:
+
+        mock_parser = MagicMock()
+        mock_parser.parse_directory.return_value = []
+        mock_parser_cls.return_value = mock_parser
+
+        mock_writer = MagicMock()
+        mock_writer_cls.return_value = mock_writer
+
+        ingestor = KlineIngestor(ingestor_config)
+        source = "/data"
+        symbols = ["BTCUSDT"]
+
+        ingestor.ingest_from_directory(source, symbols)
+
+        mock_parser.parse_directory.assert_called_once_with(source, symbols, "**/*.zip")
+
+        ingestor.close()

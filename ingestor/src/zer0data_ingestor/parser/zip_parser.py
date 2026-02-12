@@ -60,6 +60,8 @@ class KlineParser:
                     for row in csv_reader:
                         if not row or len(row) < 12:
                             continue
+                        if row[0] == "open_time":
+                            continue
 
                         try:
                             yield KlineRecord(
@@ -90,14 +92,14 @@ class KlineParser:
         self,
         dir_path: str,
         symbols: Optional[List[str]] = None,
-        pattern: str = "*.zip"
+        pattern: str = "**/*.zip"
     ) -> Iterator[Tuple[str, KlineRecord]]:
         """Parse all zip files in a directory.
 
         Args:
             dir_path: Path to the directory containing zip files
             symbols: Optional list of symbols to filter. If None, parse all files.
-            pattern: Glob pattern for matching files (default: "*.zip")
+            pattern: Glob pattern for matching files (default: "**/*.zip")
 
         Yields:
             Tuples of (symbol, KlineRecord)

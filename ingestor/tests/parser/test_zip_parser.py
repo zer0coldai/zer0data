@@ -170,3 +170,23 @@ def test_parse_empty_zip():
         assert len(records) == 0
     finally:
         Path(zip_path).unlink()
+
+
+def test_parse_file_with_header_row():
+    """Parser should ignore Binance CSV header row."""
+    csv_data = """open_time,open,high,low,close,volume,close_time,quote_volume,count,taker_buy_volume,taker_buy_quote_volume,ignore
+1704067200000,42000.00,42100.00,41900.00,42050.00,1000.5,1704067259999,42050000.00,1500,500.25,21000000.00,0
+"""
+
+    with tempfile.NamedTemporaryFile(mode="wb", suffix=".zip", delete=False) as f:
+        zip_path = f.name
+        with zipfile.ZipFile(f, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("BTCUSDT-1m-2024-01-01.csv", csv_data)
+
+    try:
+        parser = KlineParser()
+        records = list(parser.parse_file(zip_path, "BTCUSDT"))
+        assert len(records) == 1
+        assert records[0].open_time == 1704067200000
+    finally:
+        Path(zip_path).unlink()

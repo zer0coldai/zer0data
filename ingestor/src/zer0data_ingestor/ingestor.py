@@ -50,7 +50,7 @@ class KlineIngestor:
         self,
         source: str,
         symbols: Optional[List[str]] = None,
-        pattern: str = "*.zip"
+        pattern: str = "**/*.zip"
     ) -> IngestStats:
         """Ingest kline data from a directory of zip files.
 
