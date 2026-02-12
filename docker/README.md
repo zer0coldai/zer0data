@@ -11,8 +11,7 @@
 ### 1. Create data directories
 
 ```bash
-sudo mkdir -p /data/clickhouse /data/download
-sudo chown $USER:$USER /data/clickhouse /data/download
+mkdir -p data/clickhouse data/download
 ```
 
 ### 2. Start ClickHouse

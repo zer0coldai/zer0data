@@ -14,8 +14,7 @@
 ### 1. 创建数据目录
 
 ```bash
-sudo mkdir -p /data/clickhouse /data/download
-sudo chown $USER:$USER /data/clickhouse /data/download
+mkdir -p data/clickhouse data/download
 ```
 
 ### 2. 启动 ClickHouse
