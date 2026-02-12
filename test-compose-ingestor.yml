@@ -1,0 +1,17 @@
+services:
+  ingestor:
+    build:
+      context: ./ingestor
+      dockerfile: ./docker/ingestor/Dockerfile
+    container_name: zer0data-ingestor-test
+    volumes:
+      - ./test-data/download:/data
+    environment:
+      CLICKHOUSE_HOST: host.docker.internal
+      CLICKHOUSE_PORT: 8123
+      CLICKHOUSE_DB: zer0data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"

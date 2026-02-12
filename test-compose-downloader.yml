@@ -1,0 +1,14 @@
+services:
+  downloader:
+    build:
+      context: ./binance-public-data/python
+    container_name: zer0data-downloader-test
+    volumes:
+      - ./test-data/download:/data
+    environment:
+      STORE_DIRECTORY: /data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
