@@ -5,6 +5,8 @@ Tests for KlineService
 import pytest
 from zer0data import Client
 import polars as pl
+from datetime import datetime
+from types import SimpleNamespace
 
 
 @pytest.mark.parametrize(
@@ -92,3 +94,43 @@ def test_parse_timestamp_numeric(clickhouse_client):
     service = KlineService(clickhouse_client, "zer0data")
     result = service._parse_timestamp("1704067200000")
     assert result == 1704067200000
+
+
+def test_parse_timestamp_datetime(clickhouse_client):
+    """Test timestamp parsing with datetime input."""
+    from zer0data.kline import KlineService
+
+    service = KlineService(clickhouse_client, "zer0data")
+    result = service._parse_timestamp(datetime(2024, 1, 1, 0, 0, 0))
+    assert result == 1704067200000
+
+
+def test_query_converts_clickhouse_result_to_polars():
+    """Test query conversion when clickhouse_connect result has rows/columns."""
+    from zer0data.kline import KlineService
+
+    mock_result = SimpleNamespace(
+        result_rows=[["BTCUSDT", 1704067200000, 1704067259999, 42314.0, 42335.8, 42289.6, 42331.9, 289.641, 12256155.25625, 3310, 175.211, 7414459.86355]],
+        column_names=[
+            "symbol",
+            "open_time",
+            "close_time",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "quote_volume",
+            "trades_count",
+            "taker_buy_volume",
+            "taker_buy_quote_volume",
+        ],
+    )
+    mock_client = SimpleNamespace(query=lambda _: mock_result)
+
+    service = KlineService(mock_client, "zer0data")
+    result = service.query(symbols="BTCUSDT")
+
+    assert isinstance(result, pl.DataFrame)
+    assert result.height == 1
+    assert result["symbol"][0] == "BTCUSDT"

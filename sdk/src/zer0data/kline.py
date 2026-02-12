@@ -2,6 +2,7 @@
 Kline Service - Query kline/candlestick data from ClickHouse
 """
 
+from datetime import datetime, timezone
 from typing import Optional, Union
 import polars as pl
 import clickhouse_connect
@@ -24,8 +25,8 @@ class KlineService:
     def query(
         self,
         symbols: Union[str, list[str]],
-        start: Optional[str] = None,
-        end: Optional[str] = None,
+        start: Optional[Union[str, int, datetime]] = None,
+        end: Optional[Union[str, int, datetime]] = None,
         limit: Optional[int] = None,
     ) -> pl.DataFrame:
         """
@@ -85,7 +86,7 @@ class KlineService:
         """
 
         result = self._client.query(query)
-        return result.result_pl
+        return pl.DataFrame(result.result_rows, schema=result.column_names, orient="row")
 
     def query_stream(
         self,
@@ -109,7 +110,7 @@ class KlineService:
         """
         raise NotImplementedError("query_stream is not yet implemented")
 
-    def _parse_timestamp(self, timestamp: str) -> int:
+    def _parse_timestamp(self, timestamp: Union[str, int, datetime]) -> int:
         """
         Parse timestamp to Unix milliseconds
 
@@ -119,10 +120,23 @@ class KlineService:
         Returns:
             Unix timestamp in milliseconds
         """
-        # If it's a number, treat as milliseconds
+        if isinstance(timestamp, datetime):
+            if timestamp.tzinfo is None:
+                timestamp = timestamp.replace(tzinfo=timezone.utc)
+            return int(timestamp.timestamp() * 1000)
+
+        # If it's numeric, treat as milliseconds
+        if isinstance(timestamp, int):
+            return timestamp
+
         try:
             return int(timestamp)
-        except ValueError:
-            # Otherwise, parse as ISO format
-            dt = pl.from_epoch(int(pl.datetime(timestamp).timestamp() * 1000), time_unit="ms")
-            return dt.item()
+        except (TypeError, ValueError):
+            # Support ISO strings like "2024-01-01" and "2024-01-01T00:00:00Z"
+            ts = str(timestamp)
+            if ts.endswith("Z"):
+                ts = ts[:-1] + "+00:00"
+            dt = datetime.fromisoformat(ts)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return int(dt.timestamp() * 1000)
