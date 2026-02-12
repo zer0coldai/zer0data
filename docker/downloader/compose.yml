@@ -5,7 +5,7 @@ services:
       dockerfile: ../../docker/downloader/Dockerfile
     container_name: zer0data-downloader
     volumes:
-      - /data/download:/data
+      - ../../data/download:/data
     environment:
       STORE_DIRECTORY: /data
     logging:
