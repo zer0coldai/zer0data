@@ -23,3 +23,6 @@ clickhouse_data/
 
 # Binance public-data submodule
 binance-public-data/python/__pycache__/
+
+# Git worktrees
+.worktrees/
