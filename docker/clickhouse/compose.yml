@@ -12,7 +12,6 @@ services:
       CLICKHOUSE_DB: zer0data
     command: >
       clickhouse server
-      --path=/data/clickhouse
       --listen_host=0.0.0.0
     ulimits:
       nofile:
