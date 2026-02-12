@@ -8,8 +8,8 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 # Copy all project files
 COPY . .
 
-# Install package
-RUN uv pip install --no-cache --system .
+# Install package (using root pyproject.toml)
+RUN uv pip install --system --no-cache .
 
 # Data directory
 VOLUME ["/data"]
