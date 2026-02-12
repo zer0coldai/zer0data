@@ -10,9 +10,6 @@ services:
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     environment:
       CLICKHOUSE_DB: zer0data
-    command: >
-      clickhouse server
-      --listen_host=0.0.0.0
     ulimits:
       nofile:
         soft: 262144
