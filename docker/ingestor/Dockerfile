@@ -5,12 +5,11 @@ WORKDIR /app
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Install dependencies
-COPY pyproject.toml ./
-RUN uv pip install --no-cache . --no-dev
-
-# Copy code
+# Copy all project files
 COPY . .
+
+# Install package
+RUN uv pip install --no-cache --system .
 
 # Data directory
 VOLUME ["/data"]
