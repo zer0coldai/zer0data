@@ -5,7 +5,10 @@ Binance perpetual futures data SDK for efficient data access and analysis.
 ## Installation
 
 ```bash
-poetry add zer0data
+# 使用 uv（从根目录 pyproject.toml 安装）
+cd /path/to/zer0data && uv sync
+# 或在模块内运行
+uv sync
 ```
 
 ## Usage

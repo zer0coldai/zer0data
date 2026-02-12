@@ -4,6 +4,7 @@
 
 - Docker
 - Docker Compose
+- uv (for local development)
 
 ## Initial Setup
 
@@ -72,11 +73,11 @@ Check logs:
 docker compose -f clickhouse/compose.yml logs -f
 ```
 
-### View container logs
+### Package Management
 
-```bash
-# ClickHouse logs
-docker logs zer0data-clickhouse
+This project uses **uv** as the package manager for unified dependency management across Docker and local development.
+
+### View container logs
 
 # Downloader logs
 docker logs zer0data-downloader

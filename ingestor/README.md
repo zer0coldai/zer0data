@@ -5,7 +5,10 @@
 ## 安装
 
 \`\`\`bash
-poetry install
+# 使用 uv（从根目录 pyproject.toml 安装）
+cd /path/to/zer0data && uv sync
+# 或在模块内运行
+uv sync
 \`\`\`
 
 ## 使用

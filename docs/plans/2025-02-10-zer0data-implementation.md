@@ -13,7 +13,8 @@
 **Tech Stack:**
 - ClickHouse 24 (data storage)
 - Python 3.11+ (ingestion + SDK)
-- Poetry (dependency management)
+- - uv (package manager)
+- uv/
 - Docker Compose (deployment)
 - Polars (data processing)
 - APScheduler (scheduling)
