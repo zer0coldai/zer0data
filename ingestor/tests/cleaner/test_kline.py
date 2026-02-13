@@ -1,6 +1,13 @@
 import pytest
+import pandas as pd
 from zer0data_ingestor.cleaner.kline import KlineCleaner, CleanResult
 from zer0data_ingestor.writer.clickhouse import KlineRecord
+
+
+def test_kline_cleaner_defaults_to_one_minute_interval():
+    """Default cleaner interval should match 1m kline data."""
+    cleaner = KlineCleaner()
+    assert cleaner.interval_ms == 60000
 
 
 def test_kline_cleaner_removes_duplicates():
@@ -20,7 +27,7 @@ def test_kline_cleaner_removes_duplicates():
                    trades_count=2000, taker_buy_volume=100.0, taker_buy_quote_volume=5000000.0),
     ]
 
-    cleaner = KlineCleaner()
+    cleaner = KlineCleaner(interval_ms=1000)
     result = cleaner.clean(records)
 
     assert len(result.cleaned_records) == 2
@@ -46,7 +53,7 @@ def test_kline_cleaner_validates_ohlc_logic():
                    trades_count=1000, taker_buy_volume=50.0, taker_buy_quote_volume=2500000.0),
     ]
 
-    cleaner = KlineCleaner()
+    cleaner = KlineCleaner(interval_ms=1000)
     result = cleaner.clean(records)
 
     assert len(result.cleaned_records) == 1
@@ -70,7 +77,7 @@ def test_kline_cleaner_fills_time_gaps():
                    trades_count=3000, taker_buy_volume=150.0, taker_buy_quote_volume=7500000.0),
     ]
 
-    cleaner = KlineCleaner()
+    cleaner = KlineCleaner(interval_ms=1000)
     result = cleaner.clean(records)
 
     # Should have 3 records: original 2 + 1 filled gap
@@ -84,3 +91,26 @@ def test_kline_cleaner_fills_time_gaps():
     assert filled.open_price == 50050.0  # Previous close
     assert filled.close_price == 50050.0
     assert filled.volume == 0.0
+
+
+def test_kline_cleaner_does_not_use_iterrows(monkeypatch):
+    """Cleaner conversion should avoid DataFrame.iterrows for better performance."""
+    records = [
+        KlineRecord(symbol="BTCUSDT", open_time=1000, close_time=1059,
+                   open_price=50000.0, high_price=50100.0, low_price=49900.0,
+                   close_price=50050.0, volume=100.0, quote_volume=5000000.0,
+                   trades_count=1000, taker_buy_volume=50.0, taker_buy_quote_volume=2500000.0),
+        KlineRecord(symbol="BTCUSDT", open_time=3000, close_time=3059,
+                   open_price=50200.0, high_price=50300.0, low_price=50100.0,
+                   close_price=50250.0, volume=300.0, quote_volume=15000000.0,
+                   trades_count=3000, taker_buy_volume=150.0, taker_buy_quote_volume=7500000.0),
+    ]
+
+    def _fail_iterrows(self):  # pragma: no cover - intentional failure hook
+        raise AssertionError("iterrows should not be used")
+
+    monkeypatch.setattr(pd.DataFrame, "iterrows", _fail_iterrows)
+
+    cleaner = KlineCleaner(interval_ms=1000)
+    result = cleaner.clean(records)
+    assert len(result.cleaned_records) == 3

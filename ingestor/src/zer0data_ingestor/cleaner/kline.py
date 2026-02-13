@@ -1,6 +1,5 @@
 """Kline data cleaner."""
 
-import math
 import pandas as pd
 from dataclasses import dataclass, field
 from typing import List
@@ -26,11 +25,11 @@ class CleanResult:
 class KlineCleaner:
     """Cleaner for kline data."""
 
-    def __init__(self, interval_ms: int = 1000):
+    def __init__(self, interval_ms: int = 60000):
         """Initialize the cleaner.
 
         Args:
-            interval_ms: Expected time interval between records in milliseconds (default: 1000ms = 1 second)
+            interval_ms: Expected time interval between records in milliseconds (default: 60000ms = 1 minute)
         """
         self.interval_ms = interval_ms
 
@@ -74,24 +73,23 @@ class KlineCleaner:
         if not records:
             return pd.DataFrame()
 
-        data = {
-            'open_time': [r.open_time for r in records],
-            'close_time': [r.close_time for r in records],
-            'open_price': [r.open_price for r in records],
-            'high_price': [r.high_price for r in records],
-            'low_price': [r.low_price for r in records],
-            'close_price': [r.close_price for r in records],
-            'volume': [r.volume for r in records],
-            'quote_volume': [r.quote_volume for r in records],
-            'trades_count': [r.trades_count for r in records],
-            'taker_buy_volume': [r.taker_buy_volume for r in records],
-            'taker_buy_quote_volume': [r.taker_buy_quote_volume for r in records],
-            'symbol': [r.symbol for r in records],
-        }
-
-        df = pd.DataFrame(data)
-        df.set_index('open_time', inplace=True)
-        return df
+        rows = [
+            {
+                "open_time": r.open_time,
+                "close_time": r.close_time,
+                "open_price": r.open_price,
+                "high_price": r.high_price,
+                "low_price": r.low_price,
+                "close_price": r.close_price,
+                "volume": r.volume,
+                "quote_volume": r.quote_volume,
+                "trades_count": r.trades_count,
+                "taker_buy_volume": r.taker_buy_volume,
+                "taker_buy_quote_volume": r.taker_buy_quote_volume,
+            }
+            for r in records
+        ]
+        return pd.DataFrame.from_records(rows, index="open_time")
 
     def _convert_from_dataframe(self, df: pd.DataFrame, symbol: str) -> List[KlineRecord]:
         """Convert pandas DataFrame to list of KlineRecord.
@@ -104,21 +102,33 @@ class KlineCleaner:
             List of KlineRecord objects
         """
         records = []
-        for idx, row in df.iterrows():
-            open_time = int(idx)
+        for row in df.itertuples(index=True, name=None):
+            (
+                open_time,
+                close_time,
+                open_price,
+                high_price,
+                low_price,
+                close_price,
+                volume,
+                quote_volume,
+                trades_count,
+                taker_buy_volume,
+                taker_buy_quote_volume,
+            ) = row
             record = KlineRecord(
                 symbol=symbol,
-                open_time=open_time,
-                close_time=int(row['close_time']),
-                open_price=float(row['open_price']),
-                high_price=float(row['high_price']),
-                low_price=float(row['low_price']),
-                close_price=float(row['close_price']),
-                volume=float(row['volume']),
-                quote_volume=float(row['quote_volume']),
-                trades_count=int(row['trades_count']),
-                taker_buy_volume=float(row['taker_buy_volume']),
-                taker_buy_quote_volume=float(row['taker_buy_quote_volume']),
+                open_time=int(open_time),
+                close_time=int(close_time),
+                open_price=float(open_price),
+                high_price=float(high_price),
+                low_price=float(low_price),
+                close_price=float(close_price),
+                volume=float(volume),
+                quote_volume=float(quote_volume),
+                trades_count=int(trades_count),
+                taker_buy_volume=float(taker_buy_volume),
+                taker_buy_quote_volume=float(taker_buy_quote_volume),
             )
             records.append(record)
         return records
