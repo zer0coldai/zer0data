@@ -64,10 +64,10 @@ def test_ingest_from_directory(ingestor_config):
             taker_buy_volume=120.0,
             taker_buy_quote_volume=360000.0,
         )
-        # parse_directory yields tuples of (symbol, record)
+        # parse_directory yields tuples of (symbol, interval, record)
         mock_parser.parse_directory.return_value = [
-            ("BTCUSDT", mock_record_1),
-            ("ETHUSDT", mock_record_2),
+            ("BTCUSDT", "1m", mock_record_1),
+            ("ETHUSDT", "1m", mock_record_2),
         ]
         mock_parser_cls.return_value = mock_parser
 
@@ -83,7 +83,11 @@ def test_ingest_from_directory(ingestor_config):
         stats = ingestor.ingest_from_directory(source, symbols, "*.zip")
 
         # Verify parser was called correctly
-        mock_parser.parse_directory.assert_called_once_with(source, symbols, "*.zip")
+        mock_parser.parse_directory.assert_called_once_with(
+            source,
+            symbols,
+            pattern="*.zip",
+        )
 
         # Verify writer batch insert was called for each symbol batch
         assert mock_writer.insert_many.call_count == 2
@@ -195,7 +199,11 @@ def test_ingest_from_directory_uses_recursive_default_pattern(ingestor_config):
 
         ingestor.ingest_from_directory(source, symbols)
 
-        mock_parser.parse_directory.assert_called_once_with(source, symbols, "**/*.zip")
+        mock_parser.parse_directory.assert_called_once_with(
+            source,
+            symbols,
+            pattern="**/*.zip",
+        )
 
         ingestor.close()
 
@@ -240,17 +248,17 @@ def test_ingestor_integration_with_cleaner(ingestor_config):
         # Create mock data with duplicates and multiple symbols
         mock_parser = MagicMock()
         mock_parser.parse_directory.return_value = [
-            ("BTCUSDT", KlineRecord(
+            ("BTCUSDT", "1m", KlineRecord(
                 symbol="BTCUSDT", open_time=1000, close_time=1059,
                 open_price=50000.0, high_price=50100.0, low_price=49900.0,
                 close_price=50050.0, volume=100.0, quote_volume=5000000.0,
                 trades_count=1000, taker_buy_volume=50.0, taker_buy_quote_volume=2500000.0)),
-            ("BTCUSDT", KlineRecord(  # duplicate
+            ("BTCUSDT", "1m", KlineRecord(  # duplicate
                 symbol="BTCUSDT", open_time=1000, close_time=1059,
                 open_price=50000.0, high_price=50100.0, low_price=49900.0,
                 close_price=50050.0, volume=100.0, quote_volume=5000000.0,
                 trades_count=1000, taker_buy_volume=50.0, taker_buy_quote_volume=2500000.0)),
-            ("ETHUSDT", KlineRecord(
+            ("ETHUSDT", "1m", KlineRecord(
                 symbol="ETHUSDT", open_time=2000, close_time=2059,
                 open_price=3000.0, high_price=3010.0, low_price=2990.0,
                 close_price=3005.0, volume=200.0, quote_volume=600000.0,
@@ -298,12 +306,12 @@ def test_ingestor_logs_cleaning_stats(caplog, ingestor_config):
         # Create mock data with duplicates to trigger logging
         mock_parser = MagicMock()
         mock_parser.parse_directory.return_value = [
-            ("BTCUSDT", KlineRecord(
+            ("BTCUSDT", "1m", KlineRecord(
                 symbol="BTCUSDT", open_time=1000, close_time=1059,
                 open_price=50000.0, high_price=50100.0, low_price=49900.0,
                 close_price=50050.0, volume=100.0, quote_volume=5000000.0,
                 trades_count=1000, taker_buy_volume=50.0, taker_buy_quote_volume=2500000.0)),
-            ("BTCUSDT", KlineRecord(  # duplicate
+            ("BTCUSDT", "1m", KlineRecord(  # duplicate
                 symbol="BTCUSDT", open_time=1000, close_time=1059,
                 open_price=50000.0, high_price=50100.0, low_price=49900.0,
                 close_price=50050.0, volume=100.0, quote_volume=5000000.0,
@@ -389,7 +397,7 @@ def test_ingestor_processes_large_symbol_in_chunks(ingestor_config):
         ]
 
         mock_parser = MagicMock()
-        mock_parser.parse_directory.return_value = [("BTCUSDT", r) for r in records]
+        mock_parser.parse_directory.return_value = [("BTCUSDT", "1m", r) for r in records]
         mock_parser_cls.return_value = mock_parser
 
         mock_writer = MagicMock()
@@ -426,7 +434,7 @@ def test_ingestor_logs_no_cleaning_when_all_stats_zero(caplog, ingestor_config):
         # Create mock data with no duplicates
         mock_parser = MagicMock()
         mock_parser.parse_directory.return_value = [
-            ("BTCUSDT", KlineRecord(
+            ("BTCUSDT", "1m", KlineRecord(
                 symbol="BTCUSDT", open_time=1000, close_time=1059,
                 open_price=50000.0, high_price=50100.0, low_price=49900.0,
                 close_price=50050.0, volume=100.0, quote_volume=5000000.0,

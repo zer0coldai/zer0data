@@ -119,17 +119,17 @@ def test_parse_directory():
         assert len(results) == 2
 
         # Check that we got both symbols
-        symbols = [symbol for symbol, _ in results]
+        symbols = [symbol for symbol, _, _ in results]
         assert "BTCUSDT" in symbols
         assert "ETHUSDT" in symbols
 
         # Find and check BTCUSDT record
-        btc_record = next(rec for sym, rec in results if sym == "BTCUSDT")
+        btc_record = next(rec for sym, _, rec in results if sym == "BTCUSDT")
         assert btc_record.symbol == "BTCUSDT"
         assert btc_record.open_price == 42000.00
 
         # Find and check ETHUSDT record
-        eth_record = next(rec for sym, rec in results if sym == "ETHUSDT")
+        eth_record = next(rec for sym, _, rec in results if sym == "ETHUSDT")
         assert eth_record.symbol == "ETHUSDT"
         assert eth_record.open_price == 2200.00
 
@@ -157,7 +157,7 @@ def test_parse_directory_with_symbols_filter():
 
         # Assert we only got BTCUSDT records
         assert len(results) == 1
-        symbol, record = results[0]
+        symbol, _, record = results[0]
         assert symbol == "BTCUSDT"
 
 
@@ -319,7 +319,7 @@ class TestParseDirectoryWithIntervalsFilter:
 
             # Should only get 1h records
             assert len(results) == 1
-            _, record = results[0]
+            _, _, record = results[0]
             assert record.interval == "1h"
 
     def test_parse_directory_with_multiple_intervals(self):
@@ -339,7 +339,7 @@ class TestParseDirectoryWithIntervalsFilter:
 
             # Should only get 1m and 1h records (not 1d)
             assert len(results) == 2
-            intervals_in_result = {record.interval for _, record in results}
+            intervals_in_result = {record.interval for _, _, record in results}
             assert intervals_in_result == {"1m", "1h"}
 
     def test_parse_directory_extracts_intervals_from_filenames(self):
@@ -362,7 +362,7 @@ class TestParseDirectoryWithIntervalsFilter:
 
             # Check that intervals are correctly extracted
             assert len(results) == 2
-            for symbol, record in results:
+            for symbol, _, record in results:
                 if symbol == "BTCUSDT":
                     assert record.interval == "1h"
                 elif symbol == "ETHUSDT":

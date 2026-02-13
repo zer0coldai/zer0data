@@ -84,7 +84,11 @@ class KlineIngestor:
             carry_over_by_symbol: Dict[str, KlineRecord] = {}
 
             # Parse all matching files in the directory
-            for symbol, interval, record in self.parser.parse_directory(source, symbols, pattern):
+            for symbol, interval, record in self.parser.parse_directory(
+                source,
+                symbols,
+                pattern=pattern,
+            ):
                 if symbol not in records_by_symbol:
                     records_by_symbol[symbol] = []
                 records_by_symbol[symbol].append(record)
