@@ -40,6 +40,14 @@ from zer0data_ingestor.ingestor import KlineIngestor
     default="",
     help="ClickHouse password",
 )
+@click.option(
+    "--cleaner-interval-ms",
+    envvar="CLEANER_INTERVAL_MS",
+    default=60000,
+    type=int,
+    show_default=True,
+    help="Cleaner expected interval in milliseconds (1m=60000, 1h=3600000)",
+)
 @click.pass_context
 def cli(
     ctx: click.Context,
@@ -48,6 +56,7 @@ def cli(
     clickhouse_db: str,
     clickhouse_user: str,
     clickhouse_password: str,
+    cleaner_interval_ms: int,
 ) -> None:
     """Zer0data Ingestor - Binance perpetual futures data ingestion tool.
 
@@ -68,6 +77,7 @@ def cli(
             username=clickhouse_user if clickhouse_user != "default" else None,
             password=clickhouse_password if clickhouse_password else None,
         ),
+        cleaner_interval_ms=cleaner_interval_ms,
     )
 
 

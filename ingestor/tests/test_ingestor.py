@@ -349,14 +349,33 @@ def test_ingestor_logs_cleaning_stats(caplog, ingestor_config):
 
 
 def test_ingestor_passes_cleaner_interval_from_config(ingestor_config):
-    """Ingestor should pass configured cleaner interval to KlineCleaner."""
-    with patch("zer0data_ingestor.ingestor.KlineParser"), \
+    """Ingestor should derive cleaner interval from record interval."""
+    with patch("zer0data_ingestor.ingestor.KlineParser") as mock_parser_cls, \
          patch("zer0data_ingestor.ingestor.ClickHouseWriter"), \
          patch("zer0data_ingestor.ingestor.KlineCleaner") as mock_cleaner_cls:
+        from zer0data_ingestor.writer.clickhouse import KlineRecord
 
         ingestor_config.cleaner_interval_ms = 120000
-        KlineIngestor(ingestor_config)
-        mock_cleaner_cls.assert_called_once_with(interval_ms=120000)
+        mock_parser = MagicMock()
+        mock_parser.parse_directory.return_value = [
+            ("BTCUSDT", "1h", KlineRecord(
+                symbol="BTCUSDT", open_time=1735689600000, close_time=1735693199999,
+                open_price=100.0, high_price=101.0, low_price=99.0, close_price=100.5,
+                volume=1.0, quote_volume=100.0, trades_count=1,
+                taker_buy_volume=0.5, taker_buy_quote_volume=50.0,
+                interval="1h",
+            )),
+        ]
+        mock_parser_cls.return_value = mock_parser
+        mock_cleaner = MagicMock()
+        mock_cleaner.clean.return_value = CleanResult(cleaned_records=[], stats=CleaningStats())
+        mock_cleaner_cls.return_value = mock_cleaner
+
+        ingestor = KlineIngestor(ingestor_config)
+        ingestor.ingest_from_directory("/data/klines", ["BTCUSDT"])
+
+        # 1h should map to 3_600_000 ms, not fallback 120000.
+        mock_cleaner_cls.assert_called_once_with(interval_ms=3_600_000)
 
 
 def test_ingestor_passes_batch_size_to_writer(ingestor_config):

@@ -3,7 +3,7 @@
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from zer0data_ingestor.cleaner.kline import KlineCleaner
 from zer0data_ingestor.config import IngestorConfig
@@ -44,7 +44,7 @@ class KlineIngestor:
         self.config = config
         self.data_dir = Path(data_dir)
         self.parser = KlineParser()
-        self.cleaner = KlineCleaner(interval_ms=config.cleaner_interval_ms)
+        self._cleaners_by_interval: Dict[str, KlineCleaner] = {}
         self.writer = ClickHouseWriter(
             host=config.clickhouse.host,
             port=config.clickhouse.port,
@@ -78,10 +78,10 @@ class KlineIngestor:
         symbols_seen = set()
 
         try:
-            # Buffer records by symbol and process them incrementally to avoid
-            # loading all symbol history into memory at once.
-            records_by_symbol: Dict[str, List[KlineRecord]] = {}
-            carry_over_by_symbol: Dict[str, KlineRecord] = {}
+            # Buffer records by (symbol, interval) and process incrementally.
+            records_by_key: Dict[Tuple[str, str], List[KlineRecord]] = {}
+            carry_over_by_key: Dict[Tuple[str, str], KlineRecord] = {}
+            keys_seen = set()
 
             # Parse all matching files in the directory
             for symbol, interval, record in self.parser.parse_directory(
@@ -89,26 +89,28 @@ class KlineIngestor:
                 symbols,
                 pattern=pattern,
             ):
-                if symbol not in records_by_symbol:
-                    records_by_symbol[symbol] = []
-                records_by_symbol[symbol].append(record)
+                key = (symbol, interval)
+                if key not in records_by_key:
+                    records_by_key[key] = []
+                records_by_key[key].append(record)
+                keys_seen.add(key)
                 symbols_seen.add(symbol)
 
-                if len(records_by_symbol[symbol]) >= self.config.batch_size:
-                    self._clean_and_write_symbol_chunk(
-                        symbol=symbol,
-                        records_by_symbol=records_by_symbol,
-                        carry_over_by_symbol=carry_over_by_symbol,
+                if len(records_by_key[key]) >= self.config.batch_size:
+                    self._clean_and_write_key_chunk(
+                        key=key,
+                        records_by_key=records_by_key,
+                        carry_over_by_key=carry_over_by_key,
                         stats=stats,
                         final=False,
                     )
 
-            # Final flush for all symbols and any pending carry-over record.
-            for symbol in symbols_seen:
-                self._clean_and_write_symbol_chunk(
-                    symbol=symbol,
-                    records_by_symbol=records_by_symbol,
-                    carry_over_by_symbol=carry_over_by_symbol,
+            # Final flush for all keys and any pending carry-over record.
+            for key in keys_seen:
+                self._clean_and_write_key_chunk(
+                    key=key,
+                    records_by_key=records_by_key,
+                    carry_over_by_key=carry_over_by_key,
                     stats=stats,
                     final=True,
                 )
@@ -135,31 +137,33 @@ class KlineIngestor:
 
         return stats
 
-    def _clean_and_write_symbol_chunk(
+    def _clean_and_write_key_chunk(
         self,
-        symbol: str,
-        records_by_symbol: Dict[str, List[KlineRecord]],
-        carry_over_by_symbol: Dict[str, KlineRecord],
+        key: Tuple[str, str],
+        records_by_key: Dict[Tuple[str, str], List[KlineRecord]],
+        carry_over_by_key: Dict[Tuple[str, str], KlineRecord],
         stats: IngestStats,
         final: bool,
     ) -> None:
-        """Clean and write one symbol chunk.
+        """Clean and write one (symbol, interval) chunk.
 
         For non-final chunks we keep the last cleaned record as carry-over so
         the next chunk can preserve continuity for dedup/gap-filling logic.
         """
-        records = records_by_symbol.get(symbol, [])
+        symbol, interval = key
+        records = records_by_key.get(key, [])
 
         if not records:
-            if final and symbol in carry_over_by_symbol:
-                self.writer.insert_many([carry_over_by_symbol.pop(symbol)])
+            if final and key in carry_over_by_key:
+                self.writer.insert_many([carry_over_by_key.pop(key)])
                 stats.records_written += 1
             return
 
-        if symbol in carry_over_by_symbol:
-            records = [carry_over_by_symbol.pop(symbol)] + records
+        if key in carry_over_by_key:
+            records = [carry_over_by_key.pop(key)] + records
 
-        clean_result = self.cleaner.clean(records)
+        cleaner = self._get_cleaner(interval)
+        clean_result = cleaner.clean(records)
 
         stats.duplicates_removed += clean_result.stats.duplicates_removed
         stats.gaps_filled += clean_result.stats.gaps_filled
@@ -171,7 +175,7 @@ class KlineIngestor:
             or clean_result.stats.invalid_records_removed > 0
         ):
             logger.info(
-                f"Symbol {symbol}: removed {clean_result.stats.duplicates_removed} duplicates, "
+                f"Symbol {symbol} ({interval}): removed {clean_result.stats.duplicates_removed} duplicates, "
                 f"filled {clean_result.stats.gaps_filled} gaps, "
                 f"removed {clean_result.stats.invalid_records_removed} invalid records"
             )
@@ -183,16 +187,45 @@ class KlineIngestor:
         elif len(cleaned_records) <= 1:
             to_write = []
             if cleaned_records:
-                carry_over_by_symbol[symbol] = cleaned_records[0]
+                carry_over_by_key[key] = cleaned_records[0]
         else:
-            carry_over_by_symbol[symbol] = cleaned_records[-1]
+            carry_over_by_key[key] = cleaned_records[-1]
             to_write = cleaned_records[:-1]
 
         if to_write:
             self.writer.insert_many(to_write)
             stats.records_written += len(to_write)
 
-        records_by_symbol[symbol] = []
+        records_by_key[key] = []
+
+    def _get_cleaner(self, interval: str) -> KlineCleaner:
+        """Get cleaner instance for a specific interval."""
+        if interval not in self._cleaners_by_interval:
+            self._cleaners_by_interval[interval] = KlineCleaner(
+                interval_ms=self._interval_to_ms(interval)
+            )
+        return self._cleaners_by_interval[interval]
+
+    def _interval_to_ms(self, interval: str) -> int:
+        """Convert kline interval string (e.g., 1m, 1h) to milliseconds."""
+        if not interval or len(interval) < 2:
+            return self.config.cleaner_interval_ms
+
+        value_part = interval[:-1]
+        unit = interval[-1]
+        if not value_part.isdigit():
+            return self.config.cleaner_interval_ms
+
+        value = int(value_part)
+        if unit == "m":
+            return value * 60_000
+        if unit == "h":
+            return value * 3_600_000
+        if unit == "d":
+            return value * 86_400_000
+
+        # Fallback for unsupported units to preserve compatibility.
+        return self.config.cleaner_interval_ms
 
     def close(self) -> None:
         """Close the ingestor and cleanup resources."""

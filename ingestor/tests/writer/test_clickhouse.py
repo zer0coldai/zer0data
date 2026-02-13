@@ -441,6 +441,7 @@ class TestAutoCreateTable:
             # Verify engine and order by
             assert "ENGINE = MergeTree()" in call_args
             assert "ORDER BY" in call_args
+            assert "PARTITION BY toYYYYMM(toDateTime(open_time / 1000))" in call_args
             assert "symbol" in call_args
             assert "open_time" in call_args
 

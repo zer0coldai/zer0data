@@ -58,3 +58,12 @@ def test_ingest_from_dir_help():
     assert "--source" in result.output
     assert "--symbols" in result.output
     assert "--pattern" in result.output
+
+
+def test_cli_help_shows_cleaner_interval_option():
+    """Top-level help should include cleaner interval option."""
+    runner = CliRunner()
+    result = runner.invoke(cli, ["--help"])
+
+    assert result.exit_code == 0
+    assert "--cleaner-interval-ms" in result.output

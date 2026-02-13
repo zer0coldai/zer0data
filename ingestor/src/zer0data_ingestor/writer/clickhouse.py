@@ -108,7 +108,7 @@ class ClickHouseWriter:
                 interval String
             ) ENGINE = MergeTree()
             ORDER BY (symbol, open_time)
-            PARTITION BY toYYYYMM(open_time)
+            PARTITION BY toYYYYMM(toDateTime(open_time / 1000))
         """
         self.client.command(create_sql)
 
