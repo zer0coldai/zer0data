@@ -56,6 +56,8 @@ class ClickHouseWriter:
         )
         self.table = table
         self._buffer: List[KlineRecord] = []
+        if batch_size <= 0:
+            raise ValueError("batch_size must be positive")
         self._batch_size = batch_size
 
     def insert(self, record: KlineRecord) -> None:
@@ -78,14 +80,20 @@ class ClickHouseWriter:
             return
 
         self._buffer.extend(records)
-        if len(self._buffer) >= self._batch_size:
-            self.flush()
+        while len(self._buffer) >= self._batch_size:
+            batch = self._buffer[:self._batch_size]
+            self._write_batch(batch)
+            del self._buffer[:self._batch_size]
 
     def flush(self) -> None:
         """Flush buffered records to ClickHouse."""
         if not self._buffer:
             return
+        self._write_batch(self._buffer)
+        self._buffer.clear()
 
+    def _write_batch(self, records: List[KlineRecord]) -> None:
+        """Write one batch to ClickHouse."""
         data = [
             [
                 r.symbol,
@@ -101,7 +109,7 @@ class ClickHouseWriter:
                 r.taker_buy_volume,
                 r.taker_buy_quote_volume,
             ]
-            for r in self._buffer
+            for r in records
         ]
 
         self.client.insert(
@@ -122,7 +130,6 @@ class ClickHouseWriter:
                 "taker_buy_quote_volume",
             ],
         )
-        self._buffer.clear()
 
     def close(self) -> None:
         """Close the writer and flush remaining records."""

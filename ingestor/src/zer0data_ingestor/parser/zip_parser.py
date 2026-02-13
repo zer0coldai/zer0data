@@ -117,17 +117,16 @@ class KlineParser:
 
         # Find all zip files matching the pattern
         zip_files = sorted(dir_p.glob(pattern))
+        symbol_filter = set(symbols) if symbols is not None else None
 
         for zip_path in zip_files:
             # Extract symbol from filename if not provided
             # Filename format: BTCUSDT-1m-2024-01-01.zip
-            filename = zip_path.stem  # Remove .zip extension
-            parts = filename.split("-")
-            file_symbol = parts[0] if parts else None
+            file_symbol = zip_path.stem.partition("-")[0]
 
             # Skip if symbols filter is provided and file doesn't match
-            if symbols is not None:
-                if file_symbol not in symbols:
+            if symbol_filter is not None:
+                if file_symbol not in symbol_filter:
                     continue
                 symbol = file_symbol
             else:
