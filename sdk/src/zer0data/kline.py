@@ -44,25 +44,13 @@ class KlineService:
         Raises:
             ValueError: If symbols is empty
         """
-        if isinstance(symbols, str):
-            symbols = [symbols]
-
-        if not symbols:
-            raise ValueError("symbols must be a non-empty string or list of strings")
-
-        # Build WHERE clause
-        where_conditions = [f"symbol IN {tuple(symbols)}"]
-
-        if start is not None:
-            where_conditions.append(f"open_time >= {self._parse_timestamp(start)}")
-
-        if end is not None:
-            where_conditions.append(f"open_time <= {self._parse_timestamp(end)}")
-
-        where_clause = " AND ".join(where_conditions)
+        normalized_symbols = self._normalize_symbols(symbols)
+        where_clause = self._build_where_clause(normalized_symbols, start, end)
 
         # Build LIMIT clause
         limit_clause = f"LIMIT {limit}" if limit is not None else ""
+
+        order_clause = "ORDER BY open_time" if len(normalized_symbols) == 1 else "ORDER BY symbol, open_time"
 
         # Build and execute query
         query = f"""
@@ -81,7 +69,7 @@ class KlineService:
             taker_buy_quote_volume
         FROM {self._database}.klines
         WHERE {where_clause}
-        ORDER BY symbol, open_time
+        {order_clause}
         {limit_clause}
         """
 
@@ -91,8 +79,9 @@ class KlineService:
     def query_stream(
         self,
         symbols: Union[str, list[str]],
-        start: Optional[str] = None,
-        end: Optional[str] = None,
+        start: Optional[Union[str, int, datetime]] = None,
+        end: Optional[Union[str, int, datetime]] = None,
+        batch_size: int = 10000,
     ):
         """
         Query kline data as a stream
@@ -101,14 +90,89 @@ class KlineService:
             symbols: Symbol(s) to query
             start: Start timestamp
             end: End timestamp
+            batch_size: Rows per batch
 
         Returns:
-            Stream of kline data
-
-        Raises:
-            NotImplementedError: This method is not yet implemented
+            Generator yielding Polars DataFrame batches
         """
-        raise NotImplementedError("query_stream is not yet implemented")
+        if batch_size <= 0:
+            raise ValueError("batch_size must be positive")
+
+        normalized_symbols = self._normalize_symbols(symbols)
+        where_conditions = [self._build_where_clause(normalized_symbols, start, end)]
+
+        last_symbol: Optional[str] = None
+        last_open_time: Optional[int] = None
+
+        while True:
+            conditions = list(where_conditions)
+            if last_symbol is not None and last_open_time is not None:
+                escaped_symbol = last_symbol.replace("'", "''")
+                conditions.append(
+                    f"(symbol > '{escaped_symbol}' OR "
+                    f"(symbol = '{escaped_symbol}' AND open_time > {last_open_time}))"
+                )
+
+            where_clause = " AND ".join(conditions)
+            query = f"""
+            SELECT
+                symbol,
+                open_time,
+                close_time,
+                open_price AS open,
+                high_price AS high,
+                low_price AS low,
+                close_price AS close,
+                volume,
+                quote_volume,
+                trades_count,
+                taker_buy_volume,
+                taker_buy_quote_volume
+            FROM {self._database}.klines
+            WHERE {where_clause}
+            ORDER BY symbol, open_time
+            LIMIT {batch_size}
+            """
+
+            result = self._client.query(query)
+            if not result.result_rows:
+                break
+
+            batch = pl.DataFrame(result.result_rows, schema=result.column_names, orient="row")
+            yield batch
+
+            if len(result.result_rows) < batch_size:
+                break
+
+            last_row = result.result_rows[-1]
+            last_symbol = str(last_row[0])
+            last_open_time = int(last_row[1])
+
+    def _normalize_symbols(self, symbols: Union[str, list[str]]) -> list[str]:
+        """Normalize and validate symbols input."""
+        if isinstance(symbols, str):
+            symbols = [symbols]
+        if not symbols:
+            raise ValueError("symbols must be a non-empty string or list of strings")
+        return list(dict.fromkeys(symbols))
+
+    def _build_where_clause(
+        self,
+        symbols: list[str],
+        start: Optional[Union[str, int, datetime]],
+        end: Optional[Union[str, int, datetime]],
+    ) -> str:
+        """Build SQL WHERE clause for symbol and time filtering."""
+        quoted_symbols = ", ".join("'" + s.replace("'", "''") + "'" for s in symbols)
+        where_conditions = [f"symbol IN ({quoted_symbols})"]
+
+        if start is not None:
+            where_conditions.append(f"open_time >= {self._parse_timestamp(start)}")
+
+        if end is not None:
+            where_conditions.append(f"open_time <= {self._parse_timestamp(end)}")
+
+        return " AND ".join(where_conditions)
 
     def _parse_timestamp(self, timestamp: Union[str, int, datetime]) -> int:
         """
