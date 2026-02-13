@@ -178,3 +178,32 @@ def test_query_converts_clickhouse_result_to_polars():
     assert isinstance(result, pl.DataFrame)
     assert result.height == 1
     assert result["symbol"][0] == "BTCUSDT"
+
+
+def test_query_routes_to_interval_table():
+    """Query should read from klines_{interval} table when interval is provided."""
+    from zer0data.kline import KlineService
+
+    captured = {}
+    mock_result = SimpleNamespace(result_rows=[], column_names=[])
+
+    class _MockClient:
+        def query(self, sql):
+            captured["sql"] = sql
+            return mock_result
+
+    service = KlineService(_MockClient(), "zer0data")
+    service.query(symbols=["BTCUSDT"], interval="1h")
+
+    assert "FROM zer0data.klines_1h" in captured["sql"]
+
+
+def test_query_rejects_invalid_interval():
+    """Query should reject unsafe interval values."""
+    from zer0data.kline import KlineService
+
+    mock_client = SimpleNamespace(query=lambda _: SimpleNamespace(result_rows=[], column_names=[]))
+    service = KlineService(mock_client, "zer0data")
+
+    with pytest.raises(ValueError, match="invalid interval"):
+        service.query(symbols=["BTCUSDT"], interval="1h;DROP TABLE")

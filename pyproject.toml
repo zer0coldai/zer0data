@@ -8,6 +8,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "clickhouse-connect ~=0.7.0",
+    "numpy <2",
     "pandas ~=2.0",
     "polars ~=0.20",
     "pyarrow ~=14.0",
@@ -32,6 +33,12 @@ build-backend = "hatchling.build"
 # Use uv for dependency management
 dev-mode-dirs = ["."]
 dev-mode = "uv"
+
+[tool.hatch.build.targets.wheel]
+packages = [
+    "sdk/src/zer0data",
+    "ingestor/src/zer0data_ingestor",
+]
 
 [tool.ruff]
 line-length = 100

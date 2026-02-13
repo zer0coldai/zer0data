@@ -30,6 +30,22 @@ docker compose -f docker/downloader/compose.yml build
 docker compose -f docker/ingestor/compose.yml build
 ```
 
+## 环境管理（推荐统一流程）
+
+本项目建议统一使用 `uv + .venv`（本地）与 Docker（运行服务）。
+
+```bash
+# 1) 本地同步依赖（与项目锁文件一致）
+uv sync --python 3.11 --extra dev
+
+# 2) 仅在本地需要时运行 SDK 脚本
+PYTHONPATH=sdk/src .venv/bin/python sdk/tests/run_kline_query_2025_1h.py
+
+# 3) 需要完全隔离时，使用 Docker 运行同一脚本
+docker compose -f docker/ingestor/compose.yml run --rm --entrypoint sh ingestor -lc \
+  'PYTHONPATH=/app/sdk/src python /app/sdk/tests/run_kline_query_2025_1h.py'
+```
+
 ### 4. 下载 K 线数据
 
 ```bash

@@ -4,6 +4,7 @@ Kline Service - Query kline/candlestick data from ClickHouse
 
 from datetime import datetime, timezone
 from typing import Optional, Union
+import re
 import polars as pl
 import clickhouse_connect
 
@@ -25,6 +26,7 @@ class KlineService:
     def query(
         self,
         symbols: Union[str, list[str]],
+        interval: str = "1m",
         start: Optional[Union[str, int, datetime]] = None,
         end: Optional[Union[str, int, datetime]] = None,
         limit: Optional[int] = None,
@@ -34,6 +36,7 @@ class KlineService:
 
         Args:
             symbols: Symbol(s) to query (e.g., 'BTCUSDT' or ['BTCUSDT', 'ETHUSDT'])
+            interval: Kline interval (e.g., "1m", "1h", "1d")
             start: Start timestamp (ISO format or Unix timestamp in ms)
             end: End timestamp (ISO format or Unix timestamp in ms)
             limit: Maximum number of rows to return
@@ -45,6 +48,7 @@ class KlineService:
             ValueError: If symbols is empty
         """
         normalized_symbols = self._normalize_symbols(symbols)
+        table_name = self._get_table_name(interval)
         where_clause = self._build_where_clause(normalized_symbols, start, end)
 
         # Build LIMIT clause
@@ -67,7 +71,7 @@ class KlineService:
             trades_count,
             taker_buy_volume,
             taker_buy_quote_volume
-        FROM {self._database}.klines
+        FROM {self._database}.{table_name}
         WHERE {where_clause}
         {order_clause}
         {limit_clause}
@@ -79,6 +83,7 @@ class KlineService:
     def query_stream(
         self,
         symbols: Union[str, list[str]],
+        interval: str = "1m",
         start: Optional[Union[str, int, datetime]] = None,
         end: Optional[Union[str, int, datetime]] = None,
         batch_size: int = 10000,
@@ -88,6 +93,7 @@ class KlineService:
 
         Args:
             symbols: Symbol(s) to query
+            interval: Kline interval (e.g., "1m", "1h", "1d")
             start: Start timestamp
             end: End timestamp
             batch_size: Rows per batch
@@ -99,6 +105,7 @@ class KlineService:
             raise ValueError("batch_size must be positive")
 
         normalized_symbols = self._normalize_symbols(symbols)
+        table_name = self._get_table_name(interval)
         where_conditions = [self._build_where_clause(normalized_symbols, start, end)]
 
         last_symbol: Optional[str] = None
@@ -128,7 +135,7 @@ class KlineService:
                 trades_count,
                 taker_buy_volume,
                 taker_buy_quote_volume
-            FROM {self._database}.klines
+            FROM {self._database}.{table_name}
             WHERE {where_clause}
             ORDER BY symbol, open_time
             LIMIT {batch_size}
@@ -204,3 +211,9 @@ class KlineService:
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=timezone.utc)
             return int(dt.timestamp() * 1000)
+
+    def _get_table_name(self, interval: str) -> str:
+        """Resolve and validate the target interval table name."""
+        if not re.fullmatch(r"\d+[a-zA-Z]+", interval):
+            raise ValueError(f"invalid interval: {interval}")
+        return f"klines_{interval}"
