@@ -192,3 +192,82 @@ def test_ingest_from_directory_uses_recursive_default_pattern(ingestor_config):
         mock_parser.parse_directory.assert_called_once_with(source, symbols, "**/*.zip")
 
         ingestor.close()
+
+
+def test_ingestor_cleans_data_before_writing(ingestor_config):
+    """Test that ingestor applies cleaning before writing to database."""
+    from unittest.mock import Mock
+    from zer0data_ingestor.writer.clickhouse import KlineRecord
+
+    # Create mock data with duplicates
+    records = [
+        KlineRecord(symbol="BTCUSDT", open_time=1000, close_time=1059,
+                   open_price=50000.0, high_price=50100.0, low_price=49900.0,
+                   close_price=50050.0, volume=100.0, quote_volume=5000000.0,
+                   trades_count=1000, taker_buy_volume=50.0, taker_buy_quote_volume=2500000.0),
+        KlineRecord(symbol="BTCUSDT", open_time=1000, close_time=1059,  # duplicate
+                   open_price=50000.0, high_price=50100.0, low_price=49900.0,
+                   close_price=50050.0, volume=100.0, quote_volume=5000000.0,
+                   trades_count=1000, taker_buy_volume=50.0, taker_buy_quote_volume=2500000.0),
+    ]
+
+    # Manually test cleaning
+    from zer0data_ingestor.cleaner.kline import KlineCleaner
+    cleaner = KlineCleaner()
+    result = cleaner.clean(records)
+
+    # Should only have 1 record after cleaning
+    assert len(result.cleaned_records) == 1
+    assert result.stats.duplicates_removed == 1
+
+
+def test_ingestor_integration_with_cleaner(ingestor_config):
+    """Test that ingestor integrates cleaner and tracks cleaning stats."""
+    with patch("zer0data_ingestor.ingestor.KlineParser") as mock_parser_cls, \
+         patch("zer0data_ingestor.ingestor.ClickHouseWriter") as mock_writer_cls:
+
+        from zer0data_ingestor.writer.clickhouse import KlineRecord
+
+        # Create mock data with duplicates and multiple symbols
+        mock_parser = MagicMock()
+        mock_parser.parse_directory.return_value = [
+            ("BTCUSDT", KlineRecord(
+                symbol="BTCUSDT", open_time=1000, close_time=1059,
+                open_price=50000.0, high_price=50100.0, low_price=49900.0,
+                close_price=50050.0, volume=100.0, quote_volume=5000000.0,
+                trades_count=1000, taker_buy_volume=50.0, taker_buy_quote_volume=2500000.0)),
+            ("BTCUSDT", KlineRecord(  # duplicate
+                symbol="BTCUSDT", open_time=1000, close_time=1059,
+                open_price=50000.0, high_price=50100.0, low_price=49900.0,
+                close_price=50050.0, volume=100.0, quote_volume=5000000.0,
+                trades_count=1000, taker_buy_volume=50.0, taker_buy_quote_volume=2500000.0)),
+            ("ETHUSDT", KlineRecord(
+                symbol="ETHUSDT", open_time=2000, close_time=2059,
+                open_price=3000.0, high_price=3010.0, low_price=2990.0,
+                close_price=3005.0, volume=200.0, quote_volume=600000.0,
+                trades_count=500, taker_buy_volume=100.0, taker_buy_quote_volume=300000.0)),
+        ]
+        mock_parser_cls.return_value = mock_parser
+
+        mock_writer = MagicMock()
+        mock_writer_cls.return_value = mock_writer
+
+        # Create ingestor and ingest
+        ingestor = KlineIngestor(ingestor_config)
+        source = "/data/klines"
+        symbols = ["BTCUSDT", "ETHUSDT"]
+
+        stats = ingestor.ingest_from_directory(source, symbols)
+
+        # Verify stats include cleaning information
+        assert hasattr(stats, "duplicates_removed")
+        assert hasattr(stats, "gaps_filled")
+        assert hasattr(stats, "invalid_records_removed")
+
+        # Should have removed 1 duplicate
+        assert stats.duplicates_removed == 1
+
+        # Writer should be called with cleaned data (2 records: 1 BTCUSDT + 1 ETHUSDT)
+        assert mock_writer.insert.call_count == 2
+
+        ingestor.close()
