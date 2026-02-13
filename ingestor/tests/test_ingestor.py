@@ -1,5 +1,6 @@
 """Tests for KlineIngestor."""
 
+import logging
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -273,39 +274,98 @@ def test_ingestor_integration_with_cleaner(ingestor_config):
         ingestor.close()
 
 
-def test_ingestor_logs_cleaning_stats(caplog):
+def test_ingestor_logs_cleaning_stats(caplog, ingestor_config):
     """Test that ingestor logs cleaning statistics."""
-    from unittest.mock import Mock, patch
-    from zer0data_ingestor.ingestor import KlineIngestor
-    from zer0data_ingestor.config import IngestorConfig, ClickHouseConfig
-    from zer0data_ingestor.writer.clickhouse import KlineRecord
+    with patch("zer0data_ingestor.ingestor.KlineParser") as mock_parser_cls, \
+         patch("zer0data_ingestor.ingestor.ClickHouseWriter") as mock_writer_cls:
 
-    config = IngestorConfig(
-        clickhouse=ClickHouseConfig(
-            host="localhost",
-            port=8123,
-            database="zer0data",
-            username="default",
-            password="",
-        ),
-    )
+        from zer0data_ingestor.writer.clickhouse import KlineRecord
 
-    records = [
-        KlineRecord(symbol="BTCUSDT", open_time=1000, close_time=1059,
-                   open_price=50000.0, high_price=50100.0, low_price=49900.0,
-                   close_price=50050.0, volume=100.0, quote_volume=5000000.0,
-                   trades_count=1000, taker_buy_volume=50.0, taker_buy_quote_volume=2500000.0),
-    ]
+        # Create mock data with duplicates to trigger logging
+        mock_parser = MagicMock()
+        mock_parser.parse_directory.return_value = [
+            ("BTCUSDT", KlineRecord(
+                symbol="BTCUSDT", open_time=1000, close_time=1059,
+                open_price=50000.0, high_price=50100.0, low_price=49900.0,
+                close_price=50050.0, volume=100.0, quote_volume=5000000.0,
+                trades_count=1000, taker_buy_volume=50.0, taker_buy_quote_volume=2500000.0)),
+            ("BTCUSDT", KlineRecord(  # duplicate
+                symbol="BTCUSDT", open_time=1000, close_time=1059,
+                open_price=50000.0, high_price=50100.0, low_price=49900.0,
+                close_price=50050.0, volume=100.0, quote_volume=5000000.0,
+                trades_count=1000, taker_buy_volume=50.0, taker_buy_quote_volume=2500000.0)),
+        ]
+        mock_parser_cls.return_value = mock_parser
 
-    with patch.object(KlineIngestor, '__init__', lambda self, config, data_dir=None: None):
-        ingestor = KlineIngestor(None)
-        ingestor.config = config
-        ingestor.writer = Mock()
+        mock_writer = MagicMock()
+        mock_writer_cls.return_value = mock_writer
 
-        from zer0data_ingestor.cleaner.kline import KlineCleaner
-        cleaner = KlineCleaner()
+        ingestor = KlineIngestor(ingestor_config)
 
-        # Check that stats are tracked
-        result = cleaner.clean(records)
-        assert result.stats.duplicates_removed == 0
-        assert result.stats.gaps_filled == 0
+        # Capture log messages at INFO level
+        with caplog.at_level(logging.INFO):
+            stats = ingestor.ingest_from_directory("/data/klines", ["BTCUSDT"])
+
+        # Verify cleaning stats were logged
+        assert stats.duplicates_removed == 1
+        assert stats.records_written == 1  # Only 1 record after deduplication
+
+        # Check that per-symbol cleaning log was generated
+        symbol_logs = [record for record in caplog.records if "Symbol BTCUSDT" in record.message]
+        assert len(symbol_logs) == 1
+        assert "removed 1 duplicates" in symbol_logs[0].message
+
+        # Check that overall stats log was generated
+        overall_logs = [record for record in caplog.records if "Ingestion complete" in record.message]
+        assert len(overall_logs) == 1
+        assert "1 records written" in overall_logs[0].message
+        assert "1 duplicates removed" in overall_logs[0].message
+
+        ingestor.close()
+
+
+def test_ingestor_logs_no_cleaning_when_all_stats_zero(caplog, ingestor_config):
+    """Test that ingestor handles case when no cleaning is needed."""
+    with patch("zer0data_ingestor.ingestor.KlineParser") as mock_parser_cls, \
+         patch("zer0data_ingestor.ingestor.ClickHouseWriter") as mock_writer_cls:
+
+        from zer0data_ingestor.writer.clickhouse import KlineRecord
+
+        # Create mock data with no duplicates
+        mock_parser = MagicMock()
+        mock_parser.parse_directory.return_value = [
+            ("BTCUSDT", KlineRecord(
+                symbol="BTCUSDT", open_time=1000, close_time=1059,
+                open_price=50000.0, high_price=50100.0, low_price=49900.0,
+                close_price=50050.0, volume=100.0, quote_volume=5000000.0,
+                trades_count=1000, taker_buy_volume=50.0, taker_buy_quote_volume=2500000.0)),
+        ]
+        mock_parser_cls.return_value = mock_parser
+
+        mock_writer = MagicMock()
+        mock_writer_cls.return_value = mock_writer
+
+        ingestor = KlineIngestor(ingestor_config)
+
+        # Capture log messages at INFO level
+        with caplog.at_level(logging.INFO):
+            stats = ingestor.ingest_from_directory("/data/klines", ["BTCUSDT"])
+
+        # Verify no cleaning occurred
+        assert stats.duplicates_removed == 0
+        assert stats.gaps_filled == 0
+        assert stats.invalid_records_removed == 0
+        assert stats.records_written == 1
+
+        # Check that per-symbol cleaning log was NOT generated (all stats are 0)
+        symbol_logs = [record for record in caplog.records if "Symbol BTCUSDT" in record.message]
+        assert len(symbol_logs) == 0
+
+        # Check that overall stats log was still generated
+        overall_logs = [record for record in caplog.records if "Ingestion complete" in record.message]
+        assert len(overall_logs) == 1
+        assert "0 duplicates removed" in overall_logs[0].message
+        assert "0 gaps filled" in overall_logs[0].message
+        assert "0 invalid records removed" in overall_logs[0].message
+
+        ingestor.close()
