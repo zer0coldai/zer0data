@@ -55,6 +55,13 @@ docker compose -f docker/downloader/compose.yml run --rm downloader \
 
 `download-kline.py` 使用短参数：`-t`(市场类型：`spot`/`um`/`cm`)、`-s`(交易对)、`-i`(周期)、`-d`(日期)。
 
+下载所有 USD-M 合约的 1m 月度数据（不传 `-s` 即全合约）：
+
+```bash
+docker compose -f docker/downloader/compose.yml run --rm downloader \
+  -t um -i 1m -skip-daily 1
+```
+
 ### 5. 入库到 ClickHouse（支持多周期）
 
 ```bash

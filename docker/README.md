@@ -47,6 +47,13 @@ docker compose -f downloader/compose.yml run --rm downloader \
 
 `download-kline.py` 参数为 `-t/-s/-i/-d`，其中永续合约对应 `-t um`（USD-M futures）。
 
+下载所有 USD-M 合约的 1m 月度数据（不传 `-s` 即全合约）：
+
+```bash
+docker compose -f downloader/compose.yml run --rm downloader \
+  -t um -i 1m -skip-daily 1
+```
+
 ### Ingest to Database
 
 ```bash
