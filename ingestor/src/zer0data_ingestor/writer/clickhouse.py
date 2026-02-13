@@ -108,6 +108,7 @@ class ClickHouseWriter:
                 interval String
             ) ENGINE = MergeTree()
             ORDER BY (symbol, open_time)
+            PARTITION BY toYYYYMM(open_time)
         """
         self.client.command(create_sql)
 
@@ -116,7 +117,15 @@ class ClickHouseWriter:
 
         Args:
             table: The table name to ensure exists
+
+        Raises:
+            ValueError: If the table name does not start with the configured prefix
         """
+        # Validate that the table name starts with the configured prefix for safety
+        if not table.startswith(f"{self.table}_"):
+            raise ValueError(
+                f"Table name '{table}' must start with prefix '{self.table}_'"
+            )
         if not self._table_exists(table):
             self._create_table(table)
 
