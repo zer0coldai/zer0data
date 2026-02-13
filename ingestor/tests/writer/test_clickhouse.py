@@ -27,6 +27,9 @@ def test_writer_insert_single(clickhouse_client):
         taker_buy_quote_volume=3000000.0,
     )
 
+    # Verify record has default interval value
+    assert record.interval == "1m"
+
     writer.insert(record)
     writer.flush()
 
@@ -64,6 +67,10 @@ def test_writer_batch_insert(clickhouse_client):
         )
         for i in range(10)
     ]
+
+    # Verify all records have default interval value
+    for record in records:
+        assert record.interval == "1m"
 
     for record in records:
         writer.insert(record)
@@ -114,3 +121,9 @@ def test_writer_insert_many_flushes_in_chunks():
         assert len(first_batch_rows) == 2
         assert len(second_batch_rows) == 2
         assert len(third_batch_rows) == 1
+
+        # Verify interval field is included in data
+        for batch_rows in [first_batch_rows, second_batch_rows, third_batch_rows]:
+            for row in batch_rows:
+                # Last element should be the interval field with default value "1m"
+                assert row[-1] == "1m"

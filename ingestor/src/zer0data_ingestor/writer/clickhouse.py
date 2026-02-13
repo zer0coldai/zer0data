@@ -21,6 +21,7 @@ class KlineRecord:
     trades_count: int
     taker_buy_volume: float
     taker_buy_quote_volume: float
+    interval: str = "1m"
 
 
 class ClickHouseWriter:
@@ -108,6 +109,7 @@ class ClickHouseWriter:
                 r.trades_count,
                 r.taker_buy_volume,
                 r.taker_buy_quote_volume,
+                r.interval,
             ]
             for r in records
         ]
@@ -128,6 +130,7 @@ class ClickHouseWriter:
                 "trades_count",
                 "taker_buy_volume",
                 "taker_buy_quote_volume",
+                "interval",
             ],
         )
 

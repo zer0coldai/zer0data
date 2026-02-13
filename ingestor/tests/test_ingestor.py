@@ -94,6 +94,10 @@ def test_ingest_from_directory(ingestor_config):
         assert stats.records_written == 2
         assert len(stats.errors) == 0
 
+        # Verify records have default interval value
+        assert mock_record_1.interval == "1m"
+        assert mock_record_2.interval == "1m"
+
         # Cleanup
         ingestor.close()
 
@@ -222,6 +226,9 @@ def test_ingestor_cleans_data_before_writing(ingestor_config):
     assert len(result.cleaned_records) == 1
     assert result.stats.duplicates_removed == 1
 
+    # Verify interval is preserved
+    assert result.cleaned_records[0].interval == "1m"
+
 
 def test_ingestor_integration_with_cleaner(ingestor_config):
     """Test that ingestor integrates cleaner and tracks cleaning stats."""
@@ -272,6 +279,12 @@ def test_ingestor_integration_with_cleaner(ingestor_config):
         # Writer should be called with cleaned data (2 records: 1 BTCUSDT + 1 ETHUSDT)
         assert mock_writer.insert_many.call_count == 2
 
+        # Verify written records have default interval
+        written_records = []
+        for call in mock_writer.insert_many.call_args_list:
+            written_records.extend(call[0][0])
+        assert all(r.interval == "1m" for r in written_records)
+
         ingestor.close()
 
 
@@ -310,6 +323,12 @@ def test_ingestor_logs_cleaning_stats(caplog, ingestor_config):
         # Verify cleaning stats were logged
         assert stats.duplicates_removed == 1
         assert stats.records_written == 1  # Only 1 record after deduplication
+
+        # Verify written record has default interval
+        assert mock_writer.insert_many.call_count == 1
+        written_records = mock_writer.insert_many.call_args_list[0][0][0]
+        assert len(written_records) == 1
+        assert written_records[0].interval == "1m"
 
         # Check that per-symbol cleaning log was generated
         symbol_logs = [record for record in caplog.records if "Symbol BTCUSDT" in record.message]
@@ -390,6 +409,10 @@ def test_ingestor_processes_large_symbol_in_chunks(ingestor_config):
         assert mock_writer.insert_many.call_count == 3
         assert stats.records_written == 5
 
+        # Verify all records have default interval
+        for record in records:
+            assert record.interval == "1m"
+
         ingestor.close()
 
 
@@ -425,6 +448,12 @@ def test_ingestor_logs_no_cleaning_when_all_stats_zero(caplog, ingestor_config):
         assert stats.gaps_filled == 0
         assert stats.invalid_records_removed == 0
         assert stats.records_written == 1
+
+        # Verify written record has default interval
+        assert mock_writer.insert_many.call_count == 1
+        written_records = mock_writer.insert_many.call_args_list[0][0][0]
+        assert len(written_records) == 1
+        assert written_records[0].interval == "1m"
 
         # Check that per-symbol cleaning log was NOT generated (all stats are 0)
         symbol_logs = [record for record in caplog.records if "Symbol BTCUSDT" in record.message]
