@@ -54,3 +54,33 @@ def test_kline_cleaner_validates_ohlc_logic():
     # Check that validation errors contain the expected error types
     error_text = " ".join(result.stats.validation_errors)
     assert "high < low" in error_text or ("negative" in error_text or "non-positive" in error_text)
+
+
+def test_kline_cleaner_fills_time_gaps():
+    """Test that time gaps are filled using forward fill."""
+    records = [
+        KlineRecord(symbol="BTCUSDT", open_time=1000, close_time=1059,
+                   open_price=50000.0, high_price=50100.0, low_price=49900.0,
+                   close_price=50050.0, volume=100.0, quote_volume=5000000.0,
+                   trades_count=1000, taker_buy_volume=50.0, taker_buy_quote_volume=2500000.0),
+        # Gap: missing 2000, should be filled
+        KlineRecord(symbol="BTCUSDT", open_time=3000, close_time=3059,
+                   open_price=50200.0, high_price=50300.0, low_price=50100.0,
+                   close_price=50250.0, volume=300.0, quote_volume=15000000.0,
+                   trades_count=3000, taker_buy_volume=150.0, taker_buy_quote_volume=7500000.0),
+    ]
+
+    cleaner = KlineCleaner()
+    result = cleaner.clean(records)
+
+    # Should have 3 records: original 2 + 1 filled gap
+    assert len(result.cleaned_records) == 3
+    assert result.stats.gaps_filled == 1
+
+    # Check the filled record
+    filled = result.cleaned_records[1]
+    assert filled.open_time == 2000
+    # Filled with forward fill from previous record
+    assert filled.open_price == 50050.0  # Previous close
+    assert filled.close_price == 50050.0
+    assert filled.volume == 0.0

@@ -1,5 +1,7 @@
 """Kline data cleaner."""
 
+import math
+import pandas as pd
 from dataclasses import dataclass, field
 from typing import List
 from zer0data_ingestor.writer.clickhouse import KlineRecord
@@ -23,6 +25,14 @@ class CleanResult:
 
 class KlineCleaner:
     """Cleaner for kline data."""
+
+    def __init__(self, interval_ms: int = 1000):
+        """Initialize the cleaner.
+
+        Args:
+            interval_ms: Expected time interval between records in milliseconds (default: 1000ms = 1 second)
+        """
+        self.interval_ms = interval_ms
 
     def _validate_record(self, record: KlineRecord) -> tuple[bool, list[str]]:
         """Validate a kline record.
@@ -52,8 +62,138 @@ class KlineCleaner:
 
         return (len(errors) == 0, errors)
 
+    def _convert_to_dataframe(self, records: List[KlineRecord]) -> pd.DataFrame:
+        """Convert list of KlineRecord to pandas DataFrame.
+
+        Args:
+            records: List of kline records
+
+        Returns:
+            DataFrame with records as rows
+        """
+        if not records:
+            return pd.DataFrame()
+
+        data = {
+            'open_time': [r.open_time for r in records],
+            'close_time': [r.close_time for r in records],
+            'open_price': [r.open_price for r in records],
+            'high_price': [r.high_price for r in records],
+            'low_price': [r.low_price for r in records],
+            'close_price': [r.close_price for r in records],
+            'volume': [r.volume for r in records],
+            'quote_volume': [r.quote_volume for r in records],
+            'trades_count': [r.trades_count for r in records],
+            'taker_buy_volume': [r.taker_buy_volume for r in records],
+            'taker_buy_quote_volume': [r.taker_buy_quote_volume for r in records],
+            'symbol': [r.symbol for r in records],
+        }
+
+        df = pd.DataFrame(data)
+        df.set_index('open_time', inplace=True)
+        return df
+
+    def _convert_from_dataframe(self, df: pd.DataFrame, symbol: str) -> List[KlineRecord]:
+        """Convert pandas DataFrame to list of KlineRecord.
+
+        Args:
+            df: DataFrame with kline data
+            symbol: Symbol for all records
+
+        Returns:
+            List of KlineRecord objects
+        """
+        records = []
+        for idx, row in df.iterrows():
+            open_time = int(idx)
+            record = KlineRecord(
+                symbol=symbol,
+                open_time=open_time,
+                close_time=int(row['close_time']),
+                open_price=float(row['open_price']),
+                high_price=float(row['high_price']),
+                low_price=float(row['low_price']),
+                close_price=float(row['close_price']),
+                volume=float(row['volume']),
+                quote_volume=float(row['quote_volume']),
+                trades_count=int(row['trades_count']),
+                taker_buy_volume=float(row['taker_buy_volume']),
+                taker_buy_quote_volume=float(row['taker_buy_quote_volume']),
+            )
+            records.append(record)
+        return records
+
+    def _fill_gaps(self, records: List[KlineRecord], stats: CleaningStats) -> List[KlineRecord]:
+        """Fill time gaps using pandas forward fill.
+
+        Args:
+            records: List of kline records (already deduplicated and validated)
+            stats: CleaningStats to update with gaps_filled count
+
+        Returns:
+            List of records with gaps filled
+        """
+        if len(records) < 2:
+            return records
+
+        # Get symbol from first record
+        symbol = records[0].symbol
+
+        # Convert to DataFrame
+        df = self._convert_to_dataframe(records)
+
+        # Use configured interval
+        interval_ms = self.interval_ms
+
+        # Create complete time range
+        min_time = df.index.min()
+        max_time = df.index.max()
+
+        # Create expected index with proper step
+        expected_range = pd.RangeIndex(
+            start=min_time,
+            stop=max_time + 1,
+            step=interval_ms
+        )
+
+        # Count gaps before filling
+        original_count = len(df)
+
+        # Reindex to fill gaps and forward fill
+        df_reindexed = df.reindex(expected_range)
+
+        # Forward fill quote columns first
+        quote_cols = ['quote_volume', 'trades_count', 'taker_buy_volume', 'taker_buy_quote_volume']
+        df_reindexed[quote_cols] = df_reindexed[quote_cols].ffill()
+
+        # Forward fill close_price first
+        df_reindexed['close_price'] = df_reindexed['close_price'].ffill()
+
+        # For filled rows, set all OHLC to the previous close_price
+        filled_mask = df_reindexed['open_price'].isna()
+        if filled_mask.any():
+            df_reindexed.loc[filled_mask, 'open_price'] = df_reindexed.loc[filled_mask, 'close_price']
+            df_reindexed.loc[filled_mask, 'high_price'] = df_reindexed.loc[filled_mask, 'close_price']
+            df_reindexed.loc[filled_mask, 'low_price'] = df_reindexed.loc[filled_mask, 'close_price']
+
+        # Fill volume with 0 for gaps
+        df_reindexed['volume'] = df_reindexed['volume'].fillna(0.0)
+
+        # Calculate close_time for filled rows (open_time + interval - 1)
+        filled_mask = df_reindexed['close_time'].isna()
+        if filled_mask.any():
+            df_reindexed.loc[filled_mask, 'close_time'] = (
+                df_reindexed[filled_mask].index + interval_ms - 1
+            )
+
+        # Update stats
+        stats.gaps_filled = len(df_reindexed) - original_count
+
+        # Convert back to records
+        return self._convert_from_dataframe(df_reindexed, symbol)
+
     def clean(self, records: List[KlineRecord]) -> CleanResult:
-        """Clean kline records by removing duplicates and invalid records.
+        """Clean kline records by removing duplicates, validating, and filling gaps.
 
         Args:
             records: List of kline records to clean
@@ -83,4 +223,7 @@ class KlineCleaner:
                 stats.invalid_records_removed += 1
                 stats.validation_errors.extend(errors)
 
-        return CleanResult(cleaned_records=validated, stats=stats)
+        # Fill time gaps
+        result = self._fill_gaps(validated, stats)
+
+        return CleanResult(cleaned_records=result, stats=stats)
