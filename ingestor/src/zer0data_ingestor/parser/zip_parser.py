@@ -139,7 +139,7 @@ class KlineParser:
         symbols: Optional[List[str]] = None,
         intervals: Optional[List[str]] = None,
         pattern: str = "**/*.zip"
-    ) -> Iterator[Tuple[str, KlineRecord]]:
+    ) -> Iterator[Tuple[str, str, KlineRecord]]:
         """Parse all zip files in a directory.
 
         Args:
@@ -150,7 +150,7 @@ class KlineParser:
             pattern: Glob pattern for matching files (default: "**/*.zip")
 
         Yields:
-            Tuples of (symbol, KlineRecord)
+            Tuples of (symbol, interval, KlineRecord)
 
         Raises:
             FileNotFoundError: If directory does not exist
@@ -191,7 +191,7 @@ class KlineParser:
             # Parse the zip file and yield records
             try:
                 for record in self.parse_file(str(zip_path), symbol):
-                    yield (symbol, record)
+                    yield (symbol, file_interval, record)
             except (FileNotFoundError, ValueError):
                 # Skip files that can't be parsed
                 continue
