@@ -2,7 +2,7 @@
 
 import csv
 import zipfile
-from io import StringIO
+from io import TextIOWrapper
 from pathlib import Path
 from typing import Iterator, List, Optional, Tuple
 
@@ -53,9 +53,10 @@ class KlineParser:
 
                 # Read and parse the CSV data
                 with zf.open(csv_files[0]) as csv_file:
-                    # Decode bytes to string
-                    csv_content = csv_file.read().decode("utf-8")
-                    csv_reader = csv.reader(StringIO(csv_content))
+                    # Stream rows directly from the compressed file to avoid loading
+                    # the whole CSV into memory.
+                    text_stream = TextIOWrapper(csv_file, encoding="utf-8", newline="")
+                    csv_reader = csv.reader(text_stream)
 
                     for row in csv_reader:
                         if not row or len(row) < 12:
