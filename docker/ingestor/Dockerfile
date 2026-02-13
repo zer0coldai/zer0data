@@ -11,6 +11,7 @@ COPY . .
 # Install runtime dependencies for ingestor
 RUN uv pip install --system --no-cache \
     clickhouse-connect~=0.7.0 \
+    pandas~=2.2 \
     polars~=0.20 \
     pyarrow~=14.0 \
     click~=8.1 \
