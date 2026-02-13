@@ -1,5 +1,6 @@
 """Main ingestion logic for kline data."""
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -8,6 +9,8 @@ from zer0data_ingestor.cleaner.kline import KlineCleaner
 from zer0data_ingestor.config import IngestorConfig
 from zer0data_ingestor.parser import KlineParser
 from zer0data_ingestor.writer.clickhouse import ClickHouseWriter, KlineRecord
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -94,6 +97,16 @@ class KlineIngestor:
                 stats.gaps_filled += clean_result.stats.gaps_filled
                 stats.invalid_records_removed += clean_result.stats.invalid_records_removed
 
+                # Log cleaning stats for this symbol
+                if (clean_result.stats.duplicates_removed > 0 or
+                    clean_result.stats.gaps_filled > 0 or
+                    clean_result.stats.invalid_records_removed > 0):
+                    logger.info(
+                        f"Symbol {symbol}: removed {clean_result.stats.duplicates_removed} duplicates, "
+                        f"filled {clean_result.stats.gaps_filled} gaps, "
+                        f"removed {clean_result.stats.invalid_records_removed} invalid records"
+                    )
+
                 # Write cleaned records
                 for cleaned_record in clean_result.cleaned_records:
                     self.writer.insert(cleaned_record)
@@ -106,9 +119,18 @@ class KlineIngestor:
         except Exception as e:
             error_msg = f"Error processing directory {source}: {e}"
             stats.errors.append(error_msg)
+            logger.error(error_msg)
 
         # Flush any remaining records
         self.writer.flush()
+
+        # Log overall stats
+        logger.info(
+            f"Ingestion complete: {stats.records_written} records written, "
+            f"{stats.duplicates_removed} duplicates removed, "
+            f"{stats.gaps_filled} gaps filled, "
+            f"{stats.invalid_records_removed} invalid records removed"
+        )
 
         return stats
 

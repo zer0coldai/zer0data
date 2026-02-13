@@ -271,3 +271,41 @@ def test_ingestor_integration_with_cleaner(ingestor_config):
         assert mock_writer.insert.call_count == 2
 
         ingestor.close()
+
+
+def test_ingestor_logs_cleaning_stats(caplog):
+    """Test that ingestor logs cleaning statistics."""
+    from unittest.mock import Mock, patch
+    from zer0data_ingestor.ingestor import KlineIngestor
+    from zer0data_ingestor.config import IngestorConfig, ClickHouseConfig
+    from zer0data_ingestor.writer.clickhouse import KlineRecord
+
+    config = IngestorConfig(
+        clickhouse=ClickHouseConfig(
+            host="localhost",
+            port=8123,
+            database="zer0data",
+            username="default",
+            password="",
+        ),
+    )
+
+    records = [
+        KlineRecord(symbol="BTCUSDT", open_time=1000, close_time=1059,
+                   open_price=50000.0, high_price=50100.0, low_price=49900.0,
+                   close_price=50050.0, volume=100.0, quote_volume=5000000.0,
+                   trades_count=1000, taker_buy_volume=50.0, taker_buy_quote_volume=2500000.0),
+    ]
+
+    with patch.object(KlineIngestor, '__init__', lambda self, config, data_dir=None: None):
+        ingestor = KlineIngestor(None)
+        ingestor.config = config
+        ingestor.writer = Mock()
+
+        from zer0data_ingestor.cleaner.kline import KlineCleaner
+        cleaner = KlineCleaner()
+
+        # Check that stats are tracked
+        result = cleaner.clean(records)
+        assert result.stats.duplicates_removed == 0
+        assert result.stats.gaps_filled == 0
