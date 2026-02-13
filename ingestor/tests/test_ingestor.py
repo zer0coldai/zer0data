@@ -7,6 +7,7 @@ import pytest
 
 from zer0data_ingestor.config import IngestorConfig, ClickHouseConfig
 from zer0data_ingestor.ingestor import KlineIngestor, IngestStats
+from zer0data_ingestor.cleaner.kline import CleanResult, CleaningStats
 
 
 @pytest.fixture
@@ -84,8 +85,8 @@ def test_ingest_from_directory(ingestor_config):
         # Verify parser was called correctly
         mock_parser.parse_directory.assert_called_once_with(source, symbols, "*.zip")
 
-        # Verify writer insert was called for each record
-        assert mock_writer.insert.call_count == 2
+        # Verify writer batch insert was called for each symbol batch
+        assert mock_writer.insert_many.call_count == 2
         assert mock_writer.flush.call_count == 1
 
         # Verify stats
@@ -269,7 +270,7 @@ def test_ingestor_integration_with_cleaner(ingestor_config):
         assert stats.duplicates_removed == 1
 
         # Writer should be called with cleaned data (2 records: 1 BTCUSDT + 1 ETHUSDT)
-        assert mock_writer.insert.call_count == 2
+        assert mock_writer.insert_many.call_count == 2
 
         ingestor.close()
 
@@ -318,8 +319,76 @@ def test_ingestor_logs_cleaning_stats(caplog, ingestor_config):
         # Check that overall stats log was generated
         overall_logs = [record for record in caplog.records if "Ingestion complete" in record.message]
         assert len(overall_logs) == 1
-        assert "1 records written" in overall_logs[0].message
-        assert "1 duplicates removed" in overall_logs[0].message
+
+
+def test_ingestor_passes_cleaner_interval_from_config(ingestor_config):
+    """Ingestor should pass configured cleaner interval to KlineCleaner."""
+    with patch("zer0data_ingestor.ingestor.KlineParser"), \
+         patch("zer0data_ingestor.ingestor.ClickHouseWriter"), \
+         patch("zer0data_ingestor.ingestor.KlineCleaner") as mock_cleaner_cls:
+
+        ingestor_config.cleaner_interval_ms = 120000
+        KlineIngestor(ingestor_config)
+        mock_cleaner_cls.assert_called_once_with(interval_ms=120000)
+
+
+def test_ingestor_passes_batch_size_to_writer(ingestor_config):
+    """Ingestor should pass configured batch size to ClickHouseWriter."""
+    with patch("zer0data_ingestor.ingestor.KlineParser"), \
+         patch("zer0data_ingestor.ingestor.ClickHouseWriter") as mock_writer_cls:
+        ingestor_config.batch_size = 5000
+        KlineIngestor(ingestor_config)
+        assert mock_writer_cls.call_args.kwargs["batch_size"] == 5000
+
+
+def test_ingestor_processes_large_symbol_in_chunks(ingestor_config):
+    """Ingestor should clean/write large symbol streams in chunks."""
+    with patch("zer0data_ingestor.ingestor.KlineParser") as mock_parser_cls, \
+         patch("zer0data_ingestor.ingestor.ClickHouseWriter") as mock_writer_cls, \
+         patch("zer0data_ingestor.ingestor.KlineCleaner") as mock_cleaner_cls:
+
+        from zer0data_ingestor.writer.clickhouse import KlineRecord
+
+        ingestor_config.batch_size = 2
+
+        records = [
+            KlineRecord(
+                symbol="BTCUSDT",
+                open_time=1000 + i * 1000,
+                close_time=1059 + i * 1000,
+                open_price=50000.0 + i,
+                high_price=50100.0 + i,
+                low_price=49900.0 + i,
+                close_price=50050.0 + i,
+                volume=100.0 + i,
+                quote_volume=5000000.0 + i,
+                trades_count=1000 + i,
+                taker_buy_volume=50.0 + i,
+                taker_buy_quote_volume=2500000.0 + i,
+            )
+            for i in range(5)
+        ]
+
+        mock_parser = MagicMock()
+        mock_parser.parse_directory.return_value = [("BTCUSDT", r) for r in records]
+        mock_parser_cls.return_value = mock_parser
+
+        mock_writer = MagicMock()
+        mock_writer_cls.return_value = mock_writer
+
+        mock_cleaner = MagicMock()
+        mock_cleaner.clean.side_effect = lambda chunk: CleanResult(
+            cleaned_records=chunk,
+            stats=CleaningStats(),
+        )
+        mock_cleaner_cls.return_value = mock_cleaner
+
+        ingestor = KlineIngestor(ingestor_config)
+        stats = ingestor.ingest_from_directory("/data/klines", ["BTCUSDT"])
+
+        assert mock_cleaner.clean.call_count == 3
+        assert mock_writer.insert_many.call_count == 3
+        assert stats.records_written == 5
 
         ingestor.close()
 

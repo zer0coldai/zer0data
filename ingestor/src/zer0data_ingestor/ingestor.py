@@ -44,13 +44,14 @@ class KlineIngestor:
         self.config = config
         self.data_dir = Path(data_dir)
         self.parser = KlineParser()
-        self.cleaner = KlineCleaner()
+        self.cleaner = KlineCleaner(interval_ms=config.cleaner_interval_ms)
         self.writer = ClickHouseWriter(
             host=config.clickhouse.host,
             port=config.clickhouse.port,
             database=config.clickhouse.database,
             username=config.clickhouse.username or "default",
             password=config.clickhouse.password or "",
+            batch_size=config.batch_size,
         )
         self._closed = False
 
@@ -77,8 +78,10 @@ class KlineIngestor:
         symbols_seen = set()
 
         try:
-            # Group records by symbol for cleaning
+            # Buffer records by symbol and process them incrementally to avoid
+            # loading all symbol history into memory at once.
             records_by_symbol: Dict[str, List[KlineRecord]] = {}
+            carry_over_by_symbol: Dict[str, KlineRecord] = {}
 
             # Parse all matching files in the directory
             for symbol, record in self.parser.parse_directory(source, symbols, pattern):
@@ -87,30 +90,24 @@ class KlineIngestor:
                 records_by_symbol[symbol].append(record)
                 symbols_seen.add(symbol)
 
-            # Clean and write records for each symbol
-            for symbol, records in records_by_symbol.items():
-                # Apply cleaning
-                clean_result = self.cleaner.clean(records)
-
-                # Track cleaning stats
-                stats.duplicates_removed += clean_result.stats.duplicates_removed
-                stats.gaps_filled += clean_result.stats.gaps_filled
-                stats.invalid_records_removed += clean_result.stats.invalid_records_removed
-
-                # Log cleaning stats for this symbol
-                if (clean_result.stats.duplicates_removed > 0 or
-                    clean_result.stats.gaps_filled > 0 or
-                    clean_result.stats.invalid_records_removed > 0):
-                    logger.info(
-                        f"Symbol {symbol}: removed {clean_result.stats.duplicates_removed} duplicates, "
-                        f"filled {clean_result.stats.gaps_filled} gaps, "
-                        f"removed {clean_result.stats.invalid_records_removed} invalid records"
+                if len(records_by_symbol[symbol]) >= self.config.batch_size:
+                    self._clean_and_write_symbol_chunk(
+                        symbol=symbol,
+                        records_by_symbol=records_by_symbol,
+                        carry_over_by_symbol=carry_over_by_symbol,
+                        stats=stats,
+                        final=False,
                     )
 
-                # Write cleaned records
-                for cleaned_record in clean_result.cleaned_records:
-                    self.writer.insert(cleaned_record)
-                    stats.records_written += 1
+            # Final flush for all symbols and any pending carry-over record.
+            for symbol in symbols_seen:
+                self._clean_and_write_symbol_chunk(
+                    symbol=symbol,
+                    records_by_symbol=records_by_symbol,
+                    carry_over_by_symbol=carry_over_by_symbol,
+                    stats=stats,
+                    final=True,
+                )
 
             # Track the directory as processed
             stats.files_processed = 1
@@ -133,6 +130,65 @@ class KlineIngestor:
         )
 
         return stats
+
+    def _clean_and_write_symbol_chunk(
+        self,
+        symbol: str,
+        records_by_symbol: Dict[str, List[KlineRecord]],
+        carry_over_by_symbol: Dict[str, KlineRecord],
+        stats: IngestStats,
+        final: bool,
+    ) -> None:
+        """Clean and write one symbol chunk.
+
+        For non-final chunks we keep the last cleaned record as carry-over so
+        the next chunk can preserve continuity for dedup/gap-filling logic.
+        """
+        records = records_by_symbol.get(symbol, [])
+
+        if not records:
+            if final and symbol in carry_over_by_symbol:
+                self.writer.insert_many([carry_over_by_symbol.pop(symbol)])
+                stats.records_written += 1
+            return
+
+        if symbol in carry_over_by_symbol:
+            records = [carry_over_by_symbol.pop(symbol)] + records
+
+        clean_result = self.cleaner.clean(records)
+
+        stats.duplicates_removed += clean_result.stats.duplicates_removed
+        stats.gaps_filled += clean_result.stats.gaps_filled
+        stats.invalid_records_removed += clean_result.stats.invalid_records_removed
+
+        if (
+            clean_result.stats.duplicates_removed > 0
+            or clean_result.stats.gaps_filled > 0
+            or clean_result.stats.invalid_records_removed > 0
+        ):
+            logger.info(
+                f"Symbol {symbol}: removed {clean_result.stats.duplicates_removed} duplicates, "
+                f"filled {clean_result.stats.gaps_filled} gaps, "
+                f"removed {clean_result.stats.invalid_records_removed} invalid records"
+            )
+
+        cleaned_records = clean_result.cleaned_records
+        to_write: List[KlineRecord]
+        if final:
+            to_write = cleaned_records
+        elif len(cleaned_records) <= 1:
+            to_write = []
+            if cleaned_records:
+                carry_over_by_symbol[symbol] = cleaned_records[0]
+        else:
+            carry_over_by_symbol[symbol] = cleaned_records[-1]
+            to_write = cleaned_records[:-1]
+
+        if to_write:
+            self.writer.insert_many(to_write)
+            stats.records_written += len(to_write)
+
+        records_by_symbol[symbol] = []
 
     def close(self) -> None:
         """Close the ingestor and cleanup resources."""

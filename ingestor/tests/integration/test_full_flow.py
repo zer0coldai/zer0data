@@ -41,6 +41,6 @@ def test_full_flow():
             # Verify
             assert stats.symbols_processed >= 1, "Should process at least 1 symbol"
             assert stats.records_written >= 1, "Should write at least 1 record"
-            assert mock_writer.insert.call_count > 0, "insert() should be called"
+            assert mock_writer.insert_many.call_count > 0, "insert_many() should be called"
             mock_writer.flush.assert_called_once(), "flush() should be called once"
             mock_writer.close.assert_called_once(), "close() should be called once"

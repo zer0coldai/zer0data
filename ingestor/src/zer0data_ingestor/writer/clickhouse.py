@@ -34,6 +34,7 @@ class ClickHouseWriter:
         table: str = "klines",
         username: str = "default",
         password: str = "",
+        batch_size: int = 1000,
     ):
         """Initialize ClickHouse writer.
 
@@ -44,6 +45,7 @@ class ClickHouseWriter:
             table: Target table name
             username: Database username
             password: Database password
+            batch_size: Number of records buffered before each insert
         """
         self.client = clickhouse_connect.get_client(
             host=host,
@@ -54,7 +56,7 @@ class ClickHouseWriter:
         )
         self.table = table
         self._buffer: List[KlineRecord] = []
-        self._batch_size = 1000
+        self._batch_size = batch_size
 
     def insert(self, record: KlineRecord) -> None:
         """Insert a single kline record.
@@ -63,6 +65,19 @@ class ClickHouseWriter:
             record: KlineRecord to insert
         """
         self._buffer.append(record)
+        if len(self._buffer) >= self._batch_size:
+            self.flush()
+
+    def insert_many(self, records: List[KlineRecord]) -> None:
+        """Insert multiple kline records.
+
+        Args:
+            records: KlineRecord list to append into write buffer
+        """
+        if not records:
+            return
+
+        self._buffer.extend(records)
         if len(self._buffer) >= self._batch_size:
             self.flush()
 
