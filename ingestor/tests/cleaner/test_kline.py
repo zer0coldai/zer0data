@@ -35,6 +35,10 @@ def test_kline_cleaner_removes_duplicates():
     assert result.cleaned_records[0].open_time == 1000
     assert result.cleaned_records[1].open_time == 2000
 
+    # Verify interval is preserved
+    assert result.cleaned_records[0].interval == "1m"
+    assert result.cleaned_records[1].interval == "1m"
+
 
 def test_kline_cleaner_validates_ohlc_logic():
     """Test that invalid OHLC records are removed."""
@@ -61,6 +65,9 @@ def test_kline_cleaner_validates_ohlc_logic():
     # Check that validation errors contain the expected error types
     error_text = " ".join(result.stats.validation_errors)
     assert "high < low" in error_text or ("negative" in error_text or "non-positive" in error_text)
+
+    # Verify interval is preserved in cleaned record
+    assert result.cleaned_records[0].interval == "1m"
 
 
 def test_kline_cleaner_fills_time_gaps():
@@ -92,6 +99,9 @@ def test_kline_cleaner_fills_time_gaps():
     assert filled.close_price == 50050.0
     assert filled.volume == 0.0
 
+    # Verify interval is preserved in all records
+    assert all(r.interval == "1m" for r in result.cleaned_records)
+
 
 def test_kline_cleaner_does_not_use_iterrows(monkeypatch):
     """Cleaner conversion should avoid DataFrame.iterrows for better performance."""
@@ -114,3 +124,6 @@ def test_kline_cleaner_does_not_use_iterrows(monkeypatch):
     cleaner = KlineCleaner(interval_ms=1000)
     result = cleaner.clean(records)
     assert len(result.cleaned_records) == 3
+
+    # Verify interval is preserved in all records
+    assert all(r.interval == "1m" for r in result.cleaned_records)

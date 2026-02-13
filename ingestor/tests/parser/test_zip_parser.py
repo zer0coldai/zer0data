@@ -7,7 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from zer0data_ingestor.parser.zip_parser import KlineParser
+from zer0data_ingestor.parser.zip_parser import (
+    KlineParser,
+    extract_interval_from_filename,
+)
 
 
 def test_parse_single_zip_file():
@@ -44,7 +47,8 @@ def test_parse_single_zip_file():
         assert record1.quote_volume == 42050000.00
         assert record1.trades_count == 1500
         assert record1.taker_buy_volume == 500.25
-        assert record1.taker_buy_quote_volume == 21000000.00
+        assert record1.taker_buy_quote_volume == 21000000.0
+        assert record1.interval == "1m"
 
         # Check second record
         record2 = records[1]
@@ -59,7 +63,8 @@ def test_parse_single_zip_file():
         assert record2.quote_volume == 50430000.00
         assert record2.trades_count == 1800
         assert record2.taker_buy_volume == 600.15
-        assert record2.taker_buy_quote_volume == 25200000.00
+        assert record2.taker_buy_quote_volume == 25200000.0
+        assert record2.interval == "1m"
     finally:
         # Clean up temporary file
         Path(zip_path).unlink()
@@ -190,3 +195,175 @@ def test_parse_file_with_header_row():
         assert records[0].open_time == 1704067200000
     finally:
         Path(zip_path).unlink()
+
+
+class TestExtractIntervalFromFilename:
+    """Tests for extract_interval_from_filename function."""
+
+    def test_extract_interval_1m(self):
+        """Test extracting 1m interval from filename."""
+        interval = extract_interval_from_filename("BTCUSDT-1m-2024-01-01.zip")
+        assert interval == "1m"
+
+    def test_extract_interval_1h(self):
+        """Test extracting 1h interval from filename."""
+        interval = extract_interval_from_filename("BTCUSDT-1h-2024-01-01.zip")
+        assert interval == "1h"
+
+    def test_extract_interval_1d(self):
+        """Test extracting 1d interval from filename."""
+        interval = extract_interval_from_filename("ETHUSDT-1d-2024-01-01.zip")
+        assert interval == "1d"
+
+    def test_extract_interval_various_intervals(self):
+        """Test extracting various valid intervals from filename."""
+        test_cases = [
+            ("BTCUSDT-3m-2024-01-01.zip", "3m"),
+            ("BTCUSDT-5m-2024-01-01.zip", "5m"),
+            ("BTCUSDT-15m-2024-01-01.zip", "15m"),
+            ("BTCUSDT-30m-2024-01-01.zip", "30m"),
+            ("BTCUSDT-2h-2024-01-01.zip", "2h"),
+            ("BTCUSDT-4h-2024-01-01.zip", "4h"),
+            ("BTCUSDT-6h-2024-01-01.zip", "6h"),
+            ("BTCUSDT-8h-2024-01-01.zip", "8h"),
+            ("BTCUSDT-12h-2024-01-01.zip", "12h"),
+        ]
+        for filename, expected_interval in test_cases:
+            assert extract_interval_from_filename(filename) == expected_interval
+
+    def test_extract_interval_malformed_filename(self):
+        """Test extracting interval from malformed filename returns default."""
+        # Missing parts
+        assert extract_interval_from_filename("BTCUSDT.zip") == "1m"
+        assert extract_interval_from_filename("BTCUSDT-1m.zip") == "1m"
+        assert extract_interval_from_filename("random.txt") == "1m"
+
+    def test_extract_interval_path_with_directory(self):
+        """Test extracting interval from full path."""
+        interval = extract_interval_from_filename("/path/to/BTCUSDT-1h-2024-01-01.zip")
+        assert interval == "1h"
+
+
+class TestParseFileWithInterval:
+    """Tests for parse_file with interval extraction."""
+
+    def test_parse_file_extracts_interval_from_filename(self):
+        """Test that parse_file extracts and uses interval from filename."""
+        csv_data = "1704067200000,42000.00,42100.00,41900.00,42050.00,1000.5,1704067259999,42050000.00,1500,500.25,21000000.00,0\n"
+
+        with tempfile.NamedTemporaryFile(mode="wb", suffix=".zip", delete=False) as f:
+            zip_path = f.name
+            # Create file with 1h interval in name
+            original_path = Path(zip_path)
+            named_path = original_path.parent / "BTCUSDT-1h-2024-01-01.zip"
+            original_path.rename(named_path)
+            zip_path = str(named_path)
+
+            with zipfile.ZipFile(zip_path, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr("BTCUSDT-1h-2024-01-01.csv", csv_data)
+
+        try:
+            parser = KlineParser()
+            records = list(parser.parse_file(zip_path, "BTCUSDT"))
+            assert len(records) == 1
+            assert records[0].interval == "1h"
+        finally:
+            Path(zip_path).unlink()
+
+    def test_parse_file_with_explicit_interval(self):
+        """Test that parse_file uses explicit interval parameter if provided."""
+        csv_data = "1704067200000,42000.00,42100.00,41900.00,42050.00,1000.5,1704067259999,42050000.00,1500,500.25,21000000.00,0\n"
+
+        with tempfile.NamedTemporaryFile(mode="wb", suffix=".zip", delete=False) as f:
+            zip_path = f.name
+            # Create file with 1m interval in name
+            original_path = Path(zip_path)
+            named_path = original_path.parent / "BTCUSDT-1m-2024-01-01.zip"
+            original_path.rename(named_path)
+            zip_path = str(named_path)
+
+            with zipfile.ZipFile(zip_path, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr("BTCUSDT-1m-2024-01-01.csv", csv_data)
+
+        try:
+            parser = KlineParser()
+            # Override with explicit interval
+            records = list(parser.parse_file(zip_path, "BTCUSDT", interval="5m"))
+            assert len(records) == 1
+            assert records[0].interval == "5m"
+        finally:
+            Path(zip_path).unlink()
+
+
+class TestParseDirectoryWithIntervalsFilter:
+    """Tests for parse_directory with intervals filter."""
+
+    def test_parse_directory_filters_by_interval(self):
+        """Test parsing directory with intervals filter."""
+        csv_data = "1704067200000,42000.00,42100.00,41900.00,42050.00,1000.5,1704067259999,42050000.00,1500,500.25,21000000.00,0\n"
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Create 1m interval file
+            m1_zip_path = Path(temp_dir) / "BTCUSDT-1m-2024-01-01.zip"
+            with zipfile.ZipFile(m1_zip_path, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr("BTCUSDT-1m-2024-01-01.csv", csv_data)
+
+            # Create 1h interval file
+            h1_zip_path = Path(temp_dir) / "BTCUSDT-1h-2024-01-01.zip"
+            with zipfile.ZipFile(h1_zip_path, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr("BTCUSDT-1h-2024-01-01.csv", csv_data)
+
+            # Parse with intervals filter
+            parser = KlineParser()
+            results = list(parser.parse_directory(str(temp_dir), intervals=["1h"]))
+
+            # Should only get 1h records
+            assert len(results) == 1
+            _, record = results[0]
+            assert record.interval == "1h"
+
+    def test_parse_directory_with_multiple_intervals(self):
+        """Test parsing directory with multiple intervals filter."""
+        csv_data = "1704067200000,42000.00,42100.00,41900.00,42050.00,1000.5,1704067259999,42050000.00,1500,500.25,21000000.00,0\n"
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Create multiple interval files
+            for interval in ["1m", "1h", "1d"]:
+                zip_path = Path(temp_dir) / f"BTCUSDT-{interval}-2024-01-01.zip"
+                with zipfile.ZipFile(zip_path, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+                    zf.writestr(f"BTCUSDT-{interval}-2024-01-01.csv", csv_data)
+
+            # Parse with multiple intervals filter
+            parser = KlineParser()
+            results = list(parser.parse_directory(str(temp_dir), intervals=["1m", "1h"]))
+
+            # Should only get 1m and 1h records (not 1d)
+            assert len(results) == 2
+            intervals_in_result = {record.interval for _, record in results}
+            assert intervals_in_result == {"1m", "1h"}
+
+    def test_parse_directory_extracts_intervals_from_filenames(self):
+        """Test that parse_directory extracts interval from each filename."""
+        csv_data = "1704067200000,42000.00,42100.00,41900.00,42050.00,1000.5,1704067259999,42050000.00,1500,500.25,21000000.00,0\n"
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Create files with different intervals
+            h1_zip_path = Path(temp_dir) / "BTCUSDT-1h-2024-01-01.zip"
+            with zipfile.ZipFile(h1_zip_path, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr("BTCUSDT-1h-2024-01-01.csv", csv_data)
+
+            d1_zip_path = Path(temp_dir) / "ETHUSDT-1d-2024-01-01.zip"
+            with zipfile.ZipFile(d1_zip_path, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr("ETHUSDT-1d-2024-01-01.csv", csv_data)
+
+            # Parse without intervals filter
+            parser = KlineParser()
+            results = list(parser.parse_directory(str(temp_dir)))
+
+            # Check that intervals are correctly extracted
+            assert len(results) == 2
+            for symbol, record in results:
+                if symbol == "BTCUSDT":
+                    assert record.interval == "1h"
+                elif symbol == "ETHUSDT":
+                    assert record.interval == "1d"

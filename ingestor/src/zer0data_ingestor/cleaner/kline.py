@@ -86,17 +86,19 @@ class KlineCleaner:
                 "trades_count": r.trades_count,
                 "taker_buy_volume": r.taker_buy_volume,
                 "taker_buy_quote_volume": r.taker_buy_quote_volume,
+                "interval": r.interval,
             }
             for r in records
         ]
         return pd.DataFrame.from_records(rows, index="open_time")
 
-    def _convert_from_dataframe(self, df: pd.DataFrame, symbol: str) -> List[KlineRecord]:
+    def _convert_from_dataframe(self, df: pd.DataFrame, symbol: str, interval: str = "1m") -> List[KlineRecord]:
         """Convert pandas DataFrame to list of KlineRecord.
 
         Args:
             df: DataFrame with kline data
             symbol: Symbol for all records
+            interval: Interval string for all records
 
         Returns:
             List of KlineRecord objects
@@ -115,6 +117,7 @@ class KlineCleaner:
                 trades_count,
                 taker_buy_volume,
                 taker_buy_quote_volume,
+                interval_from_df,
             ) = row
             record = KlineRecord(
                 symbol=symbol,
@@ -129,6 +132,7 @@ class KlineCleaner:
                 trades_count=int(trades_count),
                 taker_buy_volume=float(taker_buy_volume),
                 taker_buy_quote_volume=float(taker_buy_quote_volume),
+                interval=interval_from_df,
             )
             records.append(record)
         return records
@@ -176,6 +180,9 @@ class KlineCleaner:
         quote_cols = ['quote_volume', 'trades_count', 'taker_buy_volume', 'taker_buy_quote_volume']
         df_reindexed[quote_cols] = df_reindexed[quote_cols].ffill()
 
+        # Forward fill interval column
+        df_reindexed['interval'] = df_reindexed['interval'].ffill()
+
         # Forward fill close_price first
         df_reindexed['close_price'] = df_reindexed['close_price'].ffill()
 
@@ -199,8 +206,9 @@ class KlineCleaner:
         # Update stats
         stats.gaps_filled = len(df_reindexed) - original_count
 
-        # Convert back to records
-        return self._convert_from_dataframe(df_reindexed, symbol)
+        # Convert back to records, passing interval from first record
+        interval = records[0].interval if records else "1m"
+        return self._convert_from_dataframe(df_reindexed, symbol, interval)
 
     def clean(self, records: List[KlineRecord]) -> CleanResult:
         """Clean kline records by removing duplicates, validating, and filling gaps.
