@@ -44,7 +44,8 @@ def test_parse_single_zip_file():
         assert record1.quote_volume == 42050000.00
         assert record1.trades_count == 1500
         assert record1.taker_buy_volume == 500.25
-        assert record1.taker_buy_quote_volume == 21000000.00
+        assert record1.taker_buy_quote_volume == 21000000.0
+        assert record1.interval == "1m"
 
         # Check second record
         record2 = records[1]
@@ -59,7 +60,8 @@ def test_parse_single_zip_file():
         assert record2.quote_volume == 50430000.00
         assert record2.trades_count == 1800
         assert record2.taker_buy_volume == 600.15
-        assert record2.taker_buy_quote_volume == 25200000.00
+        assert record2.taker_buy_quote_volume == 25200000.0
+        assert record2.interval == "1m"
     finally:
         # Clean up temporary file
         Path(zip_path).unlink()
