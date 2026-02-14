@@ -53,3 +53,24 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 PYTHONPATH=src pytest -q tests
 ```
+
+## Documentation (MkDocs)
+
+```bash
+cd sdk
+pip install -r requirements-docs.txt
+mkdocs serve
+```
+
+- MkDocs config: `sdk/mkdocs.yml`
+- Docs content: `sdk/docs/`
+
+### Docker preview/build
+
+```bash
+# Preview on http://127.0.0.1:8000
+docker compose -f sdk/docker-compose.docs.yml up docs-serve
+
+# Build static site to sdk/site/
+docker compose -f sdk/docker-compose.docs.yml run --rm docs-build
+```

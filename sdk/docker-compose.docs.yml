@@ -1,0 +1,25 @@
+services:
+  docs-serve:
+    image: squidfunk/mkdocs-material:latest
+    container_name: zer0data-sdk-docs
+    working_dir: /docs
+    command: serve -f mkdocs.yml -a 0.0.0.0:8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./:/docs
+
+  docs-build:
+    image: squidfunk/mkdocs-material:latest
+    working_dir: /docs
+    command: build -f mkdocs.yml --strict
+    volumes:
+      - ./:/docs
+
+  docs-static:
+    image: nginx:alpine
+    container_name: zer0data-sdk-docs-static
+    ports:
+      - "8080:80"
+    volumes:
+      - ./site:/usr/share/nginx/html:ro

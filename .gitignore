@@ -26,3 +26,6 @@ binance-public-data/python/__pycache__/
 
 # Git worktrees
 .worktrees/
+
+# MkDocs build output
+sdk/site/
