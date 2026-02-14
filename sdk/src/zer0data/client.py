@@ -3,8 +3,11 @@ zer0data Client - Main interface for data access
 """
 
 from dataclasses import dataclass
-from typing import Optional
+from datetime import datetime
+import os
+from typing import Optional, Union
 import clickhouse_connect
+import polars as pl
 
 from zer0data.kline import KlineService
 
@@ -19,17 +22,33 @@ class ClientConfig:
     password: str = ""
     database: str = "zer0data"
 
+    @classmethod
+    def from_env(cls) -> "ClientConfig":
+        """Build config from environment variables."""
+        return cls(
+            host=os.getenv("ZER0DATA_CLICKHOUSE_HOST", "localhost"),
+            port=int(os.getenv("ZER0DATA_CLICKHOUSE_PORT", "8123")),
+            username=os.getenv("ZER0DATA_CLICKHOUSE_USERNAME", "default"),
+            password=os.getenv("ZER0DATA_CLICKHOUSE_PASSWORD", ""),
+            database=os.getenv("ZER0DATA_CLICKHOUSE_DATABASE", "zer0data"),
+        )
+
 
 class Client:
     """Client for accessing zer0data from ClickHouse"""
 
+    @classmethod
+    def from_env(cls) -> "Client":
+        """Create client using ClickHouse settings from environment variables."""
+        return cls()
+
     def __init__(
         self,
-        host: str = "localhost",
-        port: int = 8123,
-        username: str = "default",
-        password: str = "",
-        database: str = "zer0data",
+        host: Optional[str] = None,
+        port: Optional[int] = None,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+        database: Optional[str] = None,
     ):
         """
         Initialize ClickHouse client
@@ -41,19 +60,20 @@ class Client:
             username: Username
             password: Password
         """
+        env_config = ClientConfig.from_env()
         self.config = ClientConfig(
-            host=host,
-            port=port,
-            username=username,
-            password=password,
-            database=database,
+            host=host if host is not None else env_config.host,
+            port=port if port is not None else env_config.port,
+            username=username if username is not None else env_config.username,
+            password=password if password is not None else env_config.password,
+            database=database if database is not None else env_config.database,
         )
         self._client = clickhouse_connect.get_client(
-            host=host,
-            port=port,
-            database=database,
-            username=username,
-            password=password,
+            host=self.config.host,
+            port=self.config.port,
+            database=self.config.database,
+            username=self.config.username,
+            password=self.config.password,
         )
         self._kline: Optional[KlineService] = None
 
@@ -67,6 +87,23 @@ class Client:
     def close(self):
         """Close the client connection"""
         self._client.close()
+
+    def get_klines(
+        self,
+        symbols: Union[str, list[str]],
+        interval: str = "1m",
+        start: Optional[Union[str, int, datetime]] = None,
+        end: Optional[Union[str, int, datetime]] = None,
+        limit: Optional[int] = None,
+    ) -> pl.DataFrame:
+        """Direct SDK entrypoint for querying kline data."""
+        return self.kline.query(
+            symbols=symbols,
+            interval=interval,
+            start=start,
+            end=end,
+            limit=limit,
+        )
 
     def __enter__(self):
         """Context manager entry"""

@@ -1,68 +1,55 @@
 # zer0data SDK
 
-Binance perpetual futures data SDK for efficient data access and analysis.
+SDK for querying `zer0data` ClickHouse tables.
 
-## Installation
+## Install (from git subdirectory)
 
 ```bash
-# 使用 uv（从根目录 pyproject.toml 安装）
-cd /path/to/zer0data && uv sync
-# 或在模块内运行
-uv sync
+pip install "git+<YOUR_GIT_URL>.git@<BRANCH_OR_TAG>#subdirectory=sdk"
 ```
 
-## Usage
+Example:
+
+```bash
+pip install "git+ssh://git@github.com/<org>/<repo>.git@main#subdirectory=sdk"
+```
+
+## Quick Start
 
 ```python
 from zer0data import Client
 
-# Connect to ClickHouse
-client = Client(
-    host="localhost",
-    port=8123,
-    database="zer0data",
-    username="default",
-    password=""
+client = Client.from_env()
+df = client.get_klines(
+    symbols=["BTCUSDT", "ETHUSDT"],
+    interval="1h",
+    start="2025-01-01T00:00:00Z",
+    end="2025-01-02T00:00:00Z",
+    limit=5000,
 )
-
-# Fetch historical trades
-trades = client.get_trades(
-    symbol="BTCUSDT",
-    start_date="2024-01-01",
-    end_date="2024-01-31"
-)
-
-# Fetch liquidations
-liquidations = client.get_liquidations(
-    symbol="BTCUSDT",
-    start_date="2024-01-01",
-    end_date="2024-01-31"
-)
-
-# Get aggregated funding rates
-funding = client.get_funding_rates(
-    symbol="BTCUSDT",
-    interval="1h"
-)
-
-# Query with custom SQL
-result = client.query("SELECT * FROM trades WHERE symbol = 'BTCUSDT' LIMIT 100")
+print(df.head())
+client.close()
 ```
+
+Environment variables:
+
+- `ZER0DATA_CLICKHOUSE_HOST` (default: `localhost`)
+- `ZER0DATA_CLICKHOUSE_PORT` (default: `8123`)
+- `ZER0DATA_CLICKHOUSE_DATABASE` (default: `zer0data`)
+- `ZER0DATA_CLICKHOUSE_USERNAME` (default: `default`)
+- `ZER0DATA_CLICKHOUSE_PASSWORD` (default: empty)
+
+## API
+
+- `Client.get_klines(...)`: direct kline query entrypoint, returns `polars.DataFrame`
+- `Client.kline.query(...)`: lower-level service call
+- `Client.kline.query_stream(...)`: batch stream query for large ranges
 
 ## Development
 
 ```bash
-# Install development dependencies
-poetry install --with dev
-
-# Run tests
-poetry run pytest
-
-# Format code
-poetry run black .
-poetry run ruff check .
+cd sdk
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+PYTHONPATH=src pytest -q tests
 ```
-
-## License
-
-MIT
