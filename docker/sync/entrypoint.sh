@@ -16,4 +16,13 @@ if [ -d /tmp/.ssh-mount ]; then
     for f in /root/.ssh/*.pub; do [ -f "$f" ] && chmod 644 "$f"; done
 fi
 
+# Map R2_* env vars to rclone config env vars.
+# env_file loads R2_* into the container; rclone reads RCLONE_CONFIG_R2_*.
+export RCLONE_CONFIG_R2_TYPE="${RCLONE_CONFIG_R2_TYPE:-s3}"
+export RCLONE_CONFIG_R2_PROVIDER="${RCLONE_CONFIG_R2_PROVIDER:-Cloudflare}"
+export RCLONE_CONFIG_R2_ACCESS_KEY_ID="${RCLONE_CONFIG_R2_ACCESS_KEY_ID:-$R2_ACCESS_KEY_ID}"
+export RCLONE_CONFIG_R2_SECRET_ACCESS_KEY="${RCLONE_CONFIG_R2_SECRET_ACCESS_KEY:-$R2_SECRET_ACCESS_KEY}"
+export RCLONE_CONFIG_R2_ENDPOINT="${RCLONE_CONFIG_R2_ENDPOINT:-$R2_ENDPOINT}"
+export RCLONE_CONFIG_R2_NO_CHECK_BUCKET="${RCLONE_CONFIG_R2_NO_CHECK_BUCKET:-true}"
+
 exec python /app/sync/sync.py "$@"
