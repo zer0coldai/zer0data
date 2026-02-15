@@ -111,7 +111,7 @@ class ClickHouseWriter:
         create_sql = f"""
             CREATE TABLE IF NOT EXISTS {table} (
                 {col_defs}
-            ) ENGINE = MergeTree()
+            ) ENGINE = ReplacingMergeTree()
             ORDER BY (symbol, open_time)
             PARTITION BY toYYYYMM(toDateTime(open_time / 1000))
         """

@@ -189,6 +189,6 @@ class TestCreateTable:
             assert "volume Float64" in sql
             assert "trades_count Int64" in sql
             assert "interval String" in sql
-            assert "ENGINE = MergeTree()" in sql
+            assert "ENGINE = ReplacingMergeTree()" in sql
             assert "ORDER BY" in sql
             assert "PARTITION BY" in sql
