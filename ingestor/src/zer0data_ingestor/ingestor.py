@@ -122,8 +122,8 @@ class KlineIngestor:
                     self.writer.write_df(cleaned_df, interval)
                     stats.records_written += len(cleaned_df)
                     logger.info(
-                        "[%d] Written %d rows for %s %s",
-                        stats.files_processed, len(cleaned_df), symbol, interval,
+                        "[%d] Written %d rows for %s %s  %s",
+                        stats.files_processed, len(cleaned_df), symbol, interval, _range,
                     )
 
         except Exception as e:
