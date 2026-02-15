@@ -1,6 +1,6 @@
 remote:
   host: cryptodata
-  data_dir: /data/zer0data/download
+  data_dir: /root/zer0data/download
 
 local:
   data_dir: /data/zer0data/download
