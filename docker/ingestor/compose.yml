@@ -11,8 +11,6 @@ services:
       CLICKHOUSE_HOST: host.docker.internal
       CLICKHOUSE_PORT: 8123
       CLICKHOUSE_DB: zer0data
-      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-zer0data}
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?Set CLICKHOUSE_PASSWORD in .env}
     logging:
       driver: "json-file"
       options:
