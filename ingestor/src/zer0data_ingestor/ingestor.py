@@ -4,6 +4,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
+import pandas as pd
+
 from zer0data_ingestor.cleaner.kline import KlineCleaner
 from zer0data_ingestor.config import IngestorConfig
 from zer0data_ingestor.constants import interval_to_ms
@@ -82,9 +84,15 @@ class KlineIngestor:
             ):
                 stats.files_processed += 1
                 symbols_seen.add(symbol)
+
+                # Build a human-readable time range for the log.
+                _ts_start = pd.Timestamp(int(df["open_time"].iloc[0]), unit="ms")
+                _ts_end = pd.Timestamp(int(df["open_time"].iloc[-1]), unit="ms")
+                _range = f"{_ts_start:%Y-%m-%d} ~ {_ts_end:%Y-%m-%d}"
+
                 logger.info(
-                    "[%d] Processing %s %s — %d rows",
-                    stats.files_processed, symbol, interval, len(df),
+                    "[%d] Processing %s %s  %s  (%d rows)",
+                    stats.files_processed, symbol, interval, _range, len(df),
                 )
 
                 cleaner = self._get_cleaner(interval)
