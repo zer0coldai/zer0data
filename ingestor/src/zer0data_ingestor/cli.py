@@ -1,5 +1,7 @@
 """CLI interface for zer0data ingestor."""
 
+import logging
+
 import click
 
 from zer0data_ingestor.config import IngestorConfig, ClickHouseConfig
@@ -56,6 +58,12 @@ def cli(
     https://github.com/binance/binance-public-data
     """
     ctx.ensure_object(dict)
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
 
     ctx.obj["config"] = IngestorConfig(
         clickhouse=ClickHouseConfig(

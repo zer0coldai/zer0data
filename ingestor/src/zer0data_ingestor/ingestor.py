@@ -82,6 +82,10 @@ class KlineIngestor:
             ):
                 stats.files_processed += 1
                 symbols_seen.add(symbol)
+                logger.info(
+                    "[%d] Processing %s %s — %d rows",
+                    stats.files_processed, symbol, interval, len(df),
+                )
 
                 cleaner = self._get_cleaner(interval)
                 clean_result = cleaner.clean(df)
@@ -109,6 +113,10 @@ class KlineIngestor:
                 if not cleaned_df.empty:
                     self.writer.write_df(cleaned_df, interval)
                     stats.records_written += len(cleaned_df)
+                    logger.info(
+                        "[%d] Written %d rows for %s %s",
+                        stats.files_processed, len(cleaned_df), symbol, interval,
+                    )
 
         except Exception as e:
             error_msg = f"Error processing directory {source}: {e}"
