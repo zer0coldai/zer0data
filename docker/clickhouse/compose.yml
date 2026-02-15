@@ -11,6 +11,8 @@ services:
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     environment:
       CLICKHOUSE_DB: zer0data
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-zer0data}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?Set CLICKHOUSE_PASSWORD in .env}
     restart: unless-stopped
     ulimits:
       nofile:
