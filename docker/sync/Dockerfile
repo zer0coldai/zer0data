@@ -29,6 +29,10 @@ ENV PYTHONPATH=/app/ingestor/src:/app/sync
 # Data directory
 VOLUME ["/data"]
 
+# Copy entrypoint script
+COPY docker/sync/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 # Default command
-ENTRYPOINT ["python", "/app/sync/sync.py"]
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["--help"]
