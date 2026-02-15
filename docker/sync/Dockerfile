@@ -4,10 +4,7 @@ WORKDIR /app
 
 # Install rsync, openssh-client (for rsync fallback) and rclone
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends rsync openssh-client curl unzip && \
-    curl -fsSL https://rclone.org/install.sh | bash && \
-    apt-get purge -y curl unzip && \
-    apt-get autoremove -y && \
+    apt-get install -y --no-install-recommends rsync openssh-client rclone && \
     rm -rf /var/lib/apt/lists/*
 
 # Install uv
