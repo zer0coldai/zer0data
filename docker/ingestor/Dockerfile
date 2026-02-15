@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.13-slim
 
 WORKDIR /app
 
@@ -10,12 +10,10 @@ COPY . .
 
 # Install runtime dependencies for ingestor
 RUN uv pip install --system --no-cache \
-    clickhouse-connect~=0.7.0 \
-    pandas~=2.2 \
-    polars~=0.20 \
-    pyarrow~=14.0 \
-    click~=8.1 \
-    "numpy<2"
+    clickhouse-connect~=0.11.0 \
+    pandas~=2.3 \
+    click~=8.3 \
+    numpy~=2.4
 
 # Expose ingestor source package
 ENV PYTHONPATH=/app/ingestor/src
