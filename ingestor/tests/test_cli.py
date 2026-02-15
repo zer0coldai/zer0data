@@ -1,17 +1,15 @@
 """Tests for CLI interface."""
 
-from click.testing import CliRunner
-from pytest import raises
-import datetime
-import zipfile
 import tempfile
+import zipfile
 from pathlib import Path
+
+from click.testing import CliRunner
 
 from zer0data_ingestor.cli import cli
 
 
 def test_cli_help():
-    """Test that CLI help displays correctly."""
     runner = CliRunner()
     result = runner.invoke(cli, ["--help"])
 
@@ -21,27 +19,28 @@ def test_cli_help():
 
 
 def test_ingest_from_dir_command():
-    """Test ingest-from-dir command with a temporary directory and zip file."""
+    """ingest-from-dir with a temp zip file should not crash on CLI level."""
     runner = CliRunner()
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Create a test zip file
-        test_zip_path = Path(tmpdir) / "BTCUSDT-1m-2024-01-01.zip"
-        with zipfile.ZipFile(test_zip_path, "w") as zf:
-            zf.writestr("BTCUSDT-1m-2024-01-01.csv", "0,1704067200000,1704067259999,42000.5,42100.0,41950.0,42075.5,1234.56")
+        zip_path = Path(tmpdir) / "BTCUSDT-1m-2024-01-01.zip"
+        csv_data = (
+            "1704067200000,42000.00,42100.00,41900.00,42050.00,"
+            "1000.5,1704067259999,42050000.00,1500,500.25,21000000.00,0\n"
+        )
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            zf.writestr("BTCUSDT-1m-2024-01-01.csv", csv_data)
 
         result = runner.invoke(
             cli,
-            ["ingest-from-dir", "--source", tmpdir, "--symbols", "BTCUSDT"]
+            ["ingest-from-dir", "--source", tmpdir, "--symbols", "BTCUSDT"],
         )
 
-        # Command should execute (even if database is not available)
-        # We're testing the command structure, not the full integration
+        # Command should execute (may fail at ClickHouse connection — that's OK).
         assert result.exit_code == 0 or "connect" in result.output.lower()
 
 
 def test_ingest_from_dir_requires_source():
-    """Test that ingest-from-dir requires --source option."""
     runner = CliRunner()
     result = runner.invoke(cli, ["ingest-from-dir"])
 
@@ -50,7 +49,6 @@ def test_ingest_from_dir_requires_source():
 
 
 def test_ingest_from_dir_help():
-    """Test that ingest-from-dir help displays correctly."""
     runner = CliRunner()
     result = runner.invoke(cli, ["ingest-from-dir", "--help"])
 
@@ -58,12 +56,14 @@ def test_ingest_from_dir_help():
     assert "--source" in result.output
     assert "--symbols" in result.output
     assert "--pattern" in result.output
+    # --cleaner-interval-ms should be gone.
+    assert "--cleaner-interval-ms" not in result.output
 
 
-def test_cli_help_shows_cleaner_interval_option():
-    """Top-level help should include cleaner interval option."""
+def test_cli_no_cleaner_interval_option():
+    """Top-level help should NOT include the removed --cleaner-interval-ms option."""
     runner = CliRunner()
     result = runner.invoke(cli, ["--help"])
 
     assert result.exit_code == 0
-    assert "--cleaner-interval-ms" in result.output
+    assert "--cleaner-interval-ms" not in result.output

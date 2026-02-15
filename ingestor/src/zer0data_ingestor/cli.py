@@ -1,8 +1,6 @@
 """CLI interface for zer0data ingestor."""
 
 import click
-from pathlib import Path
-from typing import Optional
 
 from zer0data_ingestor.config import IngestorConfig, ClickHouseConfig
 from zer0data_ingestor.ingestor import KlineIngestor
@@ -40,14 +38,6 @@ from zer0data_ingestor.ingestor import KlineIngestor
     default="",
     help="ClickHouse password",
 )
-@click.option(
-    "--cleaner-interval-ms",
-    envvar="CLEANER_INTERVAL_MS",
-    default=60000,
-    type=int,
-    show_default=True,
-    help="Cleaner expected interval in milliseconds (1m=60000, 1h=3600000)",
-)
 @click.pass_context
 def cli(
     ctx: click.Context,
@@ -56,7 +46,6 @@ def cli(
     clickhouse_db: str,
     clickhouse_user: str,
     clickhouse_password: str,
-    cleaner_interval_ms: int,
 ) -> None:
     """Zer0data Ingestor - Binance perpetual futures data ingestion tool.
 
@@ -68,7 +57,6 @@ def cli(
     """
     ctx.ensure_object(dict)
 
-    # Store configuration in context for subcommands
     ctx.obj["config"] = IngestorConfig(
         clickhouse=ClickHouseConfig(
             host=clickhouse_host,
@@ -77,7 +65,6 @@ def cli(
             username=clickhouse_user if clickhouse_user != "default" else None,
             password=clickhouse_password if clickhouse_password else None,
         ),
-        cleaner_interval_ms=cleaner_interval_ms,
     )
 
 
@@ -109,6 +96,7 @@ def ingest_from_dir(
     """Ingest kline data from a directory of downloaded zip files.
 
     Download data first using binance-public-data scripts, then ingest with this command.
+    Interval is automatically extracted from each filename (e.g. BTCUSDT-1h-2024-01-01.zip).
 
     Examples:
 
@@ -120,7 +108,6 @@ def ingest_from_dir(
     """
     config = ctx.obj["config"]
 
-    # Convert tuple to list if symbols provided
     symbols_list = list(symbols) if symbols else None
 
     click.echo(f"Ingesting data from: {source}")
@@ -129,23 +116,25 @@ def ingest_from_dir(
     else:
         click.echo("Symbols: ALL")
     click.echo(f"Pattern: {pattern}")
-    click.echo(f"ClickHouse: {config.clickhouse.host}:{config.clickhouse.port}/{config.clickhouse.database}")
+    click.echo(
+        f"ClickHouse: {config.clickhouse.host}:{config.clickhouse.port}"
+        f"/{config.clickhouse.database}"
+    )
 
     try:
-        # Create ingestor with the provided config
-        ingestor = KlineIngestor(config=config)
+        with KlineIngestor(config=config) as ingestor:
+            stats = ingestor.ingest_from_directory(
+                source=source,
+                symbols=symbols_list,
+                pattern=pattern,
+            )
 
-        # Ingest from directory
-        stats = ingestor.ingest_from_directory(
-            source=source,
-            symbols=symbols_list,
-            pattern=pattern
-        )
-
-        # Display results
         click.echo(f"\nIngestion completed:")
-        click.echo(f"  Records written: {stats.records_written}")
         click.echo(f"  Files processed: {stats.files_processed}")
+        click.echo(f"  Records written: {stats.records_written}")
+        click.echo(f"  Duplicates removed: {stats.duplicates_removed}")
+        click.echo(f"  Gaps filled: {stats.gaps_filled}")
+        click.echo(f"  Invalid records removed: {stats.invalid_records_removed}")
 
         if stats.errors:
             click.echo(f"  Errors: {len(stats.errors)}")
@@ -155,10 +144,6 @@ def ingest_from_dir(
     except Exception as e:
         click.echo(f"\nError during ingestion: {e}", err=True)
         raise click.ClickException(f"Ingestion failed: {e}")
-    finally:
-        # Ensure ingestor is properly closed
-        if 'ingestor' in locals():
-            ingestor.close()
 
 
 if __name__ == "__main__":

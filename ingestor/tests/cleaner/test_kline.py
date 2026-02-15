@@ -1,129 +1,163 @@
-import pytest
+"""Tests for KlineCleaner — DataFrame edition."""
+
 import pandas as pd
+import pytest
+
 from zer0data_ingestor.cleaner.kline import KlineCleaner, CleanResult
-from zer0data_ingestor.writer.clickhouse import KlineRecord
 
 
-def test_kline_cleaner_defaults_to_one_minute_interval():
-    """Default cleaner interval should match 1m kline data."""
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _make_df(rows, interval="1m"):
+    """Build a kline DataFrame from a list of row dicts (open_time required)."""
+    defaults = {
+        "symbol": "BTCUSDT",
+        "close_time": 0,
+        "open_price": 50000.0,
+        "high_price": 50100.0,
+        "low_price": 49900.0,
+        "close_price": 50050.0,
+        "volume": 100.0,
+        "quote_volume": 5000000.0,
+        "trades_count": 1000,
+        "taker_buy_volume": 50.0,
+        "taker_buy_quote_volume": 2500000.0,
+        "interval": interval,
+    }
+    records = []
+    for row in rows:
+        rec = {**defaults, **row}
+        records.append(rec)
+    return pd.DataFrame(records)
+
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+
+def test_defaults_to_one_minute_interval():
     cleaner = KlineCleaner()
-    assert cleaner.interval_ms == 60000
+    assert cleaner.interval_ms == 60_000
 
 
-def test_kline_cleaner_removes_duplicates():
-    """Test that duplicate records are removed, keeping first occurrence."""
-    records = [
-        KlineRecord(symbol="BTCUSDT", open_time=1000, close_time=1059,
-                   open_price=50000.0, high_price=50100.0, low_price=49900.0,
-                   close_price=50050.0, volume=100.0, quote_volume=5000000.0,
-                   trades_count=1000, taker_buy_volume=50.0, taker_buy_quote_volume=2500000.0),
-        KlineRecord(symbol="BTCUSDT", open_time=1000, close_time=1059,  # duplicate
-                   open_price=50000.0, high_price=50100.0, low_price=49900.0,
-                   close_price=50050.0, volume=100.0, quote_volume=5000000.0,
-                   trades_count=1000, taker_buy_volume=50.0, taker_buy_quote_volume=2500000.0),
-        KlineRecord(symbol="BTCUSDT", open_time=2000, close_time=2059,
-                   open_price=50100.0, high_price=50200.0, low_price=50000.0,
-                   close_price=50150.0, volume=200.0, quote_volume=10000000.0,
-                   trades_count=2000, taker_buy_volume=100.0, taker_buy_quote_volume=5000000.0),
-    ]
+def test_removes_duplicates():
+    df = _make_df([
+        {"open_time": 1000, "close_time": 1059},
+        {"open_time": 1000, "close_time": 1059},  # duplicate
+        {"open_time": 2000, "close_time": 2059},
+    ])
 
     cleaner = KlineCleaner(interval_ms=1000)
-    result = cleaner.clean(records)
+    result = cleaner.clean(df)
 
-    assert len(result.cleaned_records) == 2
+    assert len(result.cleaned_df) == 2
     assert result.stats.duplicates_removed == 1
-    assert result.cleaned_records[0].open_time == 1000
-    assert result.cleaned_records[1].open_time == 2000
-
-    # Verify interval is preserved
-    assert result.cleaned_records[0].interval == "1m"
-    assert result.cleaned_records[1].interval == "1m"
+    assert list(result.cleaned_df["open_time"]) == [1000, 2000]
 
 
-def test_kline_cleaner_validates_ohlc_logic():
-    """Test that invalid OHLC records are removed."""
-    records = [
-        KlineRecord(symbol="BTCUSDT", open_time=1000, close_time=1059,
-                   open_price=50000.0, high_price=50100.0, low_price=49900.0,
-                   close_price=50050.0, volume=100.0, quote_volume=5000000.0,
-                   trades_count=1000, taker_buy_volume=50.0, taker_buy_quote_volume=2500000.0),
-        KlineRecord(symbol="BTCUSDT", open_time=2000, close_time=2059,
-                   open_price=50100.0, high_price=50000.0, low_price=50200.0,  # Invalid: low > high
-                   close_price=50150.0, volume=200.0, quote_volume=10000000.0,
-                   trades_count=2000, taker_buy_volume=100.0, taker_buy_quote_volume=5000000.0),
-        KlineRecord(symbol="BTCUSDT", open_time=3000, close_time=3059,
-                   open_price=50000.0, high_price=-100.0, low_price=49900.0,  # Invalid: negative price
-                   close_price=50050.0, volume=100.0, quote_volume=5000000.0,
-                   trades_count=1000, taker_buy_volume=50.0, taker_buy_quote_volume=2500000.0),
-    ]
+def test_validates_ohlc_logic():
+    df = _make_df([
+        {"open_time": 1000, "close_time": 1059},  # valid
+        {
+            "open_time": 2000, "close_time": 2059,
+            "high_price": 50000.0, "low_price": 50200.0,  # invalid: low > high
+        },
+        {
+            "open_time": 3000, "close_time": 3059,
+            "high_price": -100.0,  # invalid: negative price
+        },
+    ])
 
     cleaner = KlineCleaner(interval_ms=1000)
-    result = cleaner.clean(records)
+    result = cleaner.clean(df)
 
-    assert len(result.cleaned_records) == 1
+    assert len(result.cleaned_df) == 1
     assert result.stats.invalid_records_removed == 2
-    # Check that validation errors contain the expected error types
     error_text = " ".join(result.stats.validation_errors)
-    assert "high < low" in error_text or ("negative" in error_text or "non-positive" in error_text)
-
-    # Verify interval is preserved in cleaned record
-    assert result.cleaned_records[0].interval == "1m"
+    assert "high < low" in error_text or "non-positive" in error_text
 
 
-def test_kline_cleaner_fills_time_gaps():
-    """Test that time gaps are filled using forward fill."""
-    records = [
-        KlineRecord(symbol="BTCUSDT", open_time=1000, close_time=1059,
-                   open_price=50000.0, high_price=50100.0, low_price=49900.0,
-                   close_price=50050.0, volume=100.0, quote_volume=5000000.0,
-                   trades_count=1000, taker_buy_volume=50.0, taker_buy_quote_volume=2500000.0),
-        # Gap: missing 2000, should be filled
-        KlineRecord(symbol="BTCUSDT", open_time=3000, close_time=3059,
-                   open_price=50200.0, high_price=50300.0, low_price=50100.0,
-                   close_price=50250.0, volume=300.0, quote_volume=15000000.0,
-                   trades_count=3000, taker_buy_volume=150.0, taker_buy_quote_volume=7500000.0),
-    ]
+def test_fills_time_gaps():
+    df = _make_df([
+        {"open_time": 1000, "close_time": 1059, "close_price": 50050.0},
+        # Gap: missing 2000
+        {
+            "open_time": 3000, "close_time": 3059,
+            "open_price": 50200.0, "high_price": 50300.0,
+            "low_price": 50100.0, "close_price": 50250.0,
+        },
+    ])
 
     cleaner = KlineCleaner(interval_ms=1000)
-    result = cleaner.clean(records)
+    result = cleaner.clean(df)
 
-    # Should have 3 records: original 2 + 1 filled gap
-    assert len(result.cleaned_records) == 3
+    assert len(result.cleaned_df) == 3
     assert result.stats.gaps_filled == 1
 
-    # Check the filled record
-    filled = result.cleaned_records[1]
-    assert filled.open_time == 2000
-    # Filled with forward fill from previous record
-    assert filled.open_price == 50050.0  # Previous close
-    assert filled.close_price == 50050.0
-    assert filled.volume == 0.0
+    filled = result.cleaned_df.iloc[1]
+    assert filled["open_time"] == 2000
+    # Price columns forward-filled from previous close.
+    assert filled["open_price"] == 50050.0
+    assert filled["close_price"] == 50050.0
+    assert filled["high_price"] == 50050.0
+    assert filled["low_price"] == 50050.0
+    # Volume columns filled with 0 (no trading in the gap).
+    assert filled["volume"] == 0.0
+    assert filled["quote_volume"] == 0.0
+    assert filled["trades_count"] == 0
+    assert filled["taker_buy_volume"] == 0.0
+    assert filled["taker_buy_quote_volume"] == 0.0
 
-    # Verify interval is preserved in all records
-    assert all(r.interval == "1m" for r in result.cleaned_records)
 
-
-def test_kline_cleaner_does_not_use_iterrows(monkeypatch):
-    """Cleaner conversion should avoid DataFrame.iterrows for better performance."""
-    records = [
-        KlineRecord(symbol="BTCUSDT", open_time=1000, close_time=1059,
-                   open_price=50000.0, high_price=50100.0, low_price=49900.0,
-                   close_price=50050.0, volume=100.0, quote_volume=5000000.0,
-                   trades_count=1000, taker_buy_volume=50.0, taker_buy_quote_volume=2500000.0),
-        KlineRecord(symbol="BTCUSDT", open_time=3000, close_time=3059,
-                   open_price=50200.0, high_price=50300.0, low_price=50100.0,
-                   close_price=50250.0, volume=300.0, quote_volume=15000000.0,
-                   trades_count=3000, taker_buy_volume=150.0, taker_buy_quote_volume=7500000.0),
-    ]
-
-    def _fail_iterrows(self):  # pragma: no cover - intentional failure hook
-        raise AssertionError("iterrows should not be used")
-
-    monkeypatch.setattr(pd.DataFrame, "iterrows", _fail_iterrows)
+def test_gap_fill_volume_columns_are_zero():
+    """Regression: gap-filled rows must have 0 for all volume/trade columns."""
+    df = _make_df([
+        {
+            "open_time": 1000, "close_time": 1059,
+            "volume": 500.0, "quote_volume": 1000.0,
+            "trades_count": 42,
+            "taker_buy_volume": 200.0, "taker_buy_quote_volume": 400.0,
+        },
+        {
+            "open_time": 3000, "close_time": 3059,
+            "open_price": 50000.0, "high_price": 50100.0,
+            "low_price": 49900.0, "close_price": 50050.0,
+        },
+    ])
 
     cleaner = KlineCleaner(interval_ms=1000)
-    result = cleaner.clean(records)
-    assert len(result.cleaned_records) == 3
+    result = cleaner.clean(df)
+    filled = result.cleaned_df.iloc[1]
 
-    # Verify interval is preserved in all records
-    assert all(r.interval == "1m" for r in result.cleaned_records)
+    assert filled["volume"] == 0.0
+    assert filled["quote_volume"] == 0.0
+    assert filled["trades_count"] == 0
+    assert filled["taker_buy_volume"] == 0.0
+    assert filled["taker_buy_quote_volume"] == 0.0
+
+
+def test_empty_dataframe():
+    df = pd.DataFrame()
+    cleaner = KlineCleaner()
+    result = cleaner.clean(df)
+    assert result.cleaned_df.empty
+    assert result.stats.duplicates_removed == 0
+
+
+def test_single_record():
+    df = _make_df([{"open_time": 1000, "close_time": 1059}])
+    cleaner = KlineCleaner()
+    result = cleaner.clean(df)
+    assert len(result.cleaned_df) == 1
+
+
+def test_interval_preserved():
+    df = _make_df(
+        [{"open_time": 1000, "close_time": 1059}],
+        interval="1h",
+    )
+    cleaner = KlineCleaner(interval_ms=3_600_000)
+    result = cleaner.clean(df)
+    assert result.cleaned_df.iloc[0]["interval"] == "1h"

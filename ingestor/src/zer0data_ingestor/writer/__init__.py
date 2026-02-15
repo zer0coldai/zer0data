@@ -1,5 +1,5 @@
 """ClickHouse writer module."""
 
-from zer0data_ingestor.writer.clickhouse import ClickHouseWriter, KlineRecord
+from zer0data_ingestor.writer.clickhouse import ClickHouseWriter
 
-__all__ = ["ClickHouseWriter", "KlineRecord"]
+__all__ = ["ClickHouseWriter"]
