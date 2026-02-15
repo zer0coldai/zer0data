@@ -8,6 +8,13 @@ local:
   log_dir: /data/zer0data/logs
   project_root: /Users/rock/work/zer0data
 
+storage:
+  type: r2               # r2 或 rsync
+  r2:
+    bucket: zer0data
+    prefix: download      # bucket 内路径前缀
+    transfers: 8          # rclone 并行传输数
+
 download:
   symbols:
     - BTCUSDT

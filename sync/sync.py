@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Local data sync: rsync from remote + ingest into ClickHouse.
+"""Data sync tool: upload to R2 / pull from R2 / ingest into ClickHouse.
 
 Usage:
-    python sync.py                        # sync + ingest
-    python sync.py --no-ingest            # sync only (for initial bulk transfer)
-    python sync.py --dry-run              # preview what rsync would transfer
-    python sync.py --bwlimit 10000        # bandwidth limit in KB/s
-    python sync.py --config path.yaml     # custom config file
+    python sync.py pull                     # pull from R2 + ingest
+    python sync.py pull --no-ingest         # pull only
+    python sync.py pull --dry-run           # preview pull
+    python sync.py upload                   # upload local data to R2
+    python sync.py upload --cleanup         # upload then delete local zips
+    python sync.py upload --dry-run         # preview upload
+    python sync.py --config path.yaml ...   # custom config file
 """
 
 from __future__ import annotations
@@ -28,13 +30,14 @@ _SCRIPT_DIR = Path(__file__).resolve().parent
 _PROJECT_ROOT = _SCRIPT_DIR.parent  # sync -> project root
 for _candidate in [
     _PROJECT_ROOT / "ingestor" / "src",
-    _SCRIPT_DIR,  # for config / state modules
+    _SCRIPT_DIR,  # for config / state / transfer modules
 ]:
     if _candidate.is_dir() and str(_candidate) not in sys.path:
         sys.path.insert(0, str(_candidate))
 
 from config import OpsConfig  # noqa: E402
 from state import SyncState  # noqa: E402
+from transfer import r2_pull, r2_upload, rsync_pull  # noqa: E402
 
 logger = logging.getLogger("zer0data.sync")
 
@@ -64,49 +67,6 @@ def _setup_logging(log_dir: Path) -> None:
     root.setLevel(logging.INFO)
     root.addHandler(file_handler)
     root.addHandler(stderr_handler)
-
-
-# ---------------------------------------------------------------------------
-# Rsync
-# ---------------------------------------------------------------------------
-
-def run_rsync(
-    remote_host: str,
-    remote_dir: str,
-    local_dir: str,
-    *,
-    dry_run: bool = False,
-    bwlimit: int | None = None,
-) -> None:
-    """Run rsync to sync data from remote to local.
-
-    Raises ``subprocess.CalledProcessError`` on non-zero exit code.
-    """
-    cmd: list[str] = [
-        "rsync",
-        "-az",
-        "--partial",
-        "--append-verify",
-        "--progress",
-        "--human-readable",
-    ]
-    if dry_run:
-        cmd.append("--dry-run")
-    if bwlimit is not None:
-        cmd.append(f"--bwlimit={bwlimit}")
-
-    src = f"{remote_host}:{remote_dir}/"
-    dst = f"{local_dir}/"
-    cmd.extend([src, dst])
-
-    logger.info("Running: %s", " ".join(cmd))
-    result = subprocess.run(cmd, check=False)
-    if result.returncode not in (0, 23, 24):
-        # 23 = partial transfer due to error, 24 = vanished source files
-        # Both are acceptable in incremental sync scenarios
-        raise subprocess.CalledProcessError(result.returncode, cmd)
-    if result.returncode != 0:
-        logger.warning("rsync exited with code %d (non-fatal)", result.returncode)
 
 
 # ---------------------------------------------------------------------------
@@ -164,7 +124,6 @@ def run_ingest(cfg: OpsConfig, state: SyncState) -> None:
                 state.mark_ingested(marker.name)
             except Exception:
                 logger.exception("Failed to ingest marker %s", marker.name)
-                # Continue with remaining markers rather than aborting
                 continue
 
 
@@ -207,72 +166,42 @@ class _FileLock:
 
 
 # ---------------------------------------------------------------------------
-# CLI
+# Sub-commands
 # ---------------------------------------------------------------------------
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Sync remote data to local and optionally ingest into ClickHouse.",
-    )
-    parser.add_argument(
-        "--config",
-        type=Path,
-        default=None,
-        help="Path to config.yaml (default: auto-detect)",
-    )
-    parser.add_argument(
-        "--no-ingest",
-        action="store_true",
-        help="Only rsync, skip ingestion (useful for initial bulk sync)",
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Preview what rsync would transfer without actually syncing",
-    )
-    parser.add_argument(
-        "--bwlimit",
-        type=int,
-        default=None,
-        help="Bandwidth limit for rsync in KB/s",
-    )
-    return parser.parse_args(argv)
-
-
-def main(argv: list[str] | None = None) -> int:
-    args = parse_args(argv)
-    cfg = OpsConfig.load(args.config)
-
-    _setup_logging(Path(cfg.local.log_dir))
-
-    lock_path = Path(cfg.local.state_dir) / ".sync.lock"
-    lock = _FileLock(lock_path)
-    if not lock.acquire():
-        logger.error("Another sync process is already running (lock: %s)", lock_path)
+def cmd_upload(cfg: OpsConfig, args: argparse.Namespace) -> int:
+    """Upload local data to R2 (runs on remote server)."""
+    logger.info("=== Upload to R2 ===")
+    try:
+        r2_upload(cfg, dry_run=args.dry_run, cleanup=args.cleanup)
+        logger.info("Upload completed successfully")
+        return 0
+    except subprocess.CalledProcessError as exc:
+        logger.error("rclone upload failed with exit code %d", exc.returncode)
+        return exc.returncode
+    except Exception:
+        logger.exception("Upload failed with unexpected error")
         return 1
 
-    try:
-        state = SyncState(
-            data_dir=cfg.local.data_dir,
-            state_dir=cfg.local.state_dir,
-        )
-        state.ensure_dirs()
 
-        # -- rsync ----------------------------------------------------------
-        logger.info(
-            "Starting rsync: %s:%s -> %s",
-            cfg.remote.host,
-            cfg.remote.data_dir,
-            cfg.local.data_dir,
-        )
-        run_rsync(
-            remote_host=cfg.remote.host,
-            remote_dir=cfg.remote.data_dir,
-            local_dir=cfg.local.data_dir,
-            dry_run=args.dry_run,
-            bwlimit=args.bwlimit,
-        )
-        logger.info("Rsync completed")
+def cmd_pull(cfg: OpsConfig, args: argparse.Namespace) -> int:
+    """Pull data from R2 (or rsync) and optionally ingest."""
+    logger.info("=== Pull data ===")
+
+    state = SyncState(
+        data_dir=cfg.local.data_dir,
+        state_dir=cfg.local.state_dir,
+    )
+    state.ensure_dirs()
+
+    try:
+        # -- transfer -------------------------------------------------------
+        if cfg.storage.type == "r2":
+            r2_pull(cfg, dry_run=args.dry_run)
+        else:
+            rsync_pull(cfg, dry_run=args.dry_run, bwlimit=args.bwlimit)
+
+        logger.info("Data transfer completed")
 
         if args.dry_run:
             logger.info("Dry-run mode, skipping ingest")
@@ -284,15 +213,73 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         run_ingest(cfg, state)
-        logger.info("Sync completed successfully")
+        logger.info("Pull + ingest completed successfully")
         return 0
 
     except subprocess.CalledProcessError as exc:
-        logger.error("rsync failed with exit code %d", exc.returncode)
+        logger.error("Transfer failed with exit code %d", exc.returncode)
         return exc.returncode
     except Exception:
-        logger.exception("Sync failed with unexpected error")
+        logger.exception("Pull failed with unexpected error")
         return 1
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Sync data via Cloudflare R2 (or rsync) and ingest into ClickHouse.",
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help="Path to config.yaml (default: auto-detect)",
+    )
+
+    sub = parser.add_subparsers(dest="command")
+
+    # -- upload -------------------------------------------------------------
+    p_upload = sub.add_parser("upload", help="Upload local data to R2 (run on remote server)")
+    p_upload.add_argument("--dry-run", action="store_true", help="Preview without transferring")
+    p_upload.add_argument("--cleanup", action="store_true", help="Delete local zip files after upload")
+
+    # -- pull ---------------------------------------------------------------
+    p_pull = sub.add_parser("pull", help="Pull data from R2 and ingest (run on local server)")
+    p_pull.add_argument("--no-ingest", action="store_true", help="Skip ingestion after pull")
+    p_pull.add_argument("--dry-run", action="store_true", help="Preview without transferring")
+    p_pull.add_argument("--bwlimit", type=int, default=None, help="Bandwidth limit for rsync in KB/s (rsync mode only)")
+
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    if not args.command:
+        parser.print_help()
+        return 1
+
+    cfg = OpsConfig.load(args.config)
+    _setup_logging(Path(cfg.local.log_dir))
+
+    lock_path = Path(cfg.local.state_dir) / ".sync.lock"
+    lock = _FileLock(lock_path)
+    if not lock.acquire():
+        logger.error("Another sync process is already running (lock: %s)", lock_path)
+        return 1
+
+    try:
+        if args.command == "upload":
+            return cmd_upload(cfg, args)
+        elif args.command == "pull":
+            return cmd_pull(cfg, args)
+        else:
+            parser.print_help()
+            return 1
     finally:
         lock.release()
 

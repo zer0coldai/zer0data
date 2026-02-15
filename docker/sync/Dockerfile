@@ -2,9 +2,12 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install rsync and openssh-client (for rsync over SSH)
+# Install rsync, openssh-client (for rsync fallback) and rclone
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends rsync openssh-client && \
+    apt-get install -y --no-install-recommends rsync openssh-client curl unzip && \
+    curl -fsSL https://rclone.org/install.sh | bash && \
+    apt-get purge -y curl unzip && \
+    apt-get autoremove -y && \
     rm -rf /var/lib/apt/lists/*
 
 # Install uv

@@ -36,6 +36,23 @@ class LocalConfig:
 
 
 @dataclass
+class R2Config:
+    """Cloudflare R2 settings."""
+
+    bucket: str = "zer0data"
+    prefix: str = "download"
+    transfers: int = 8
+
+
+@dataclass
+class StorageConfig:
+    """Transfer backend configuration."""
+
+    type: str = "r2"  # "r2" or "rsync"
+    r2: R2Config = field(default_factory=R2Config)
+
+
+@dataclass
 class DownloadConfig:
     """Which symbols / intervals / market to download."""
 
@@ -69,6 +86,7 @@ class OpsConfig:
 
     remote: RemoteConfig
     local: LocalConfig
+    storage: StorageConfig
     download: DownloadConfig
     clickhouse: ClickHouseConfig
     schedule: ScheduleConfig
@@ -111,11 +129,15 @@ class OpsConfig:
         - ``REMOTE_HOST``, ``REMOTE_DATA_DIR``
         - ``LOCAL_DATA_DIR``, ``LOCAL_STATE_DIR``, ``LOCAL_LOG_DIR``,
           ``LOCAL_PROJECT_ROOT``
+        - ``STORAGE_TYPE``
+        - ``R2_BUCKET``, ``R2_PREFIX``, ``R2_TRANSFERS``
         - ``CLICKHOUSE_HOST``, ``CLICKHOUSE_PORT``, ``CLICKHOUSE_DB``,
           ``CLICKHOUSE_USER``, ``CLICKHOUSE_PASSWORD``
         """
         remote_data = data.get("remote", {})
         local_data = data.get("local", {})
+        storage_data = data.get("storage", {})
+        r2_data = storage_data.get("r2", {})
         download_data = data.get("download", {})
         ch_data = data.get("clickhouse", {})
         sched_data = data.get("schedule", {})
@@ -125,14 +147,22 @@ class OpsConfig:
 
         return cls(
             remote=RemoteConfig(
-                host=_env("REMOTE_HOST", remote_data["host"]),
-                data_dir=_env("REMOTE_DATA_DIR", remote_data["data_dir"]),
+                host=_env("REMOTE_HOST", remote_data.get("host", "")),
+                data_dir=_env("REMOTE_DATA_DIR", remote_data.get("data_dir", "")),
             ),
             local=LocalConfig(
                 data_dir=_env("LOCAL_DATA_DIR", local_data["data_dir"]),
                 state_dir=_env("LOCAL_STATE_DIR", local_data["state_dir"]),
                 log_dir=_env("LOCAL_LOG_DIR", local_data["log_dir"]),
                 project_root=_env("LOCAL_PROJECT_ROOT", local_data["project_root"]),
+            ),
+            storage=StorageConfig(
+                type=_env("STORAGE_TYPE", storage_data.get("type", "r2")),
+                r2=R2Config(
+                    bucket=_env("R2_BUCKET", r2_data.get("bucket", "zer0data")),
+                    prefix=_env("R2_PREFIX", r2_data.get("prefix", "download")),
+                    transfers=int(_env("R2_TRANSFERS", r2_data.get("transfers", 8))),
+                ),
             ),
             download=DownloadConfig(
                 symbols=download_data.get("symbols", []),
