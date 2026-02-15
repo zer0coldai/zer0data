@@ -1,5 +1,6 @@
 services:
   ingestor:
+    env_file: ../../.env
     build:
       context: ../..
       dockerfile: docker/ingestor/Dockerfile

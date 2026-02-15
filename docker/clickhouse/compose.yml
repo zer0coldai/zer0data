@@ -1,5 +1,6 @@
 services:
   clickhouse:
+    env_file: ../../.env
     image: clickhouse/clickhouse-server:25.8-lts
     container_name: zer0data-clickhouse
     ports:
