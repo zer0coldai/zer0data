@@ -1,0 +1,36 @@
+# Data files (large, mounted via volumes at runtime)
+data/
+数据/
+
+# Git
+.git/
+.gitmodules
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Environment (secrets)
+.env
+
+# Logs
+*.log
+
+# ClickHouse
+clickhouse_data/
+
+# MkDocs
+sdk/site/
+
+# OS
+.DS_Store
+
+# Docker
+.dockerignore
