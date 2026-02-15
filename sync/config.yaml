@@ -1,0 +1,35 @@
+remote:
+  host: cryptodata
+  data_dir: /data/zer0data/download
+
+local:
+  data_dir: /data/zer0data/download
+  state_dir: /data/zer0data/download/_ingested
+  log_dir: /data/zer0data/logs
+  project_root: /Users/rock/work/zer0data
+
+download:
+  symbols:
+    - BTCUSDT
+    - ETHUSDT
+    - SOLUSDT
+    - BNBUSDT
+  intervals:
+    - 1m
+    - 5m
+    - 15m
+    - 1h
+    - 4h
+    - 1d
+  market: um
+
+clickhouse:
+  host: localhost
+  port: 8123
+  database: zer0data
+  username: default
+  password: ""
+
+schedule:
+  remote_time: "01:30"
+  local_time: "10:00"
