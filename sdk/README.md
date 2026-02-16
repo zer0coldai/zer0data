@@ -42,9 +42,21 @@ Environment variables:
 ## API
 
 - `Client.get_klines(...)`: direct kline query entrypoint, returns `polars.DataFrame`
-- `Client.get_symbols(market="um")`: query latest symbol metadata from `raw_exchange_info`, returns `polars.DataFrame`
+- `Client.get_symbols(market="um", quote_asset=None, exclude_stable_base=False)`: query latest symbol metadata from `raw_exchange_info`, returns `polars.DataFrame`
 - `Client.kline.query(...)`: lower-level service call
 - `Client.kline.query_stream(...)`: batch stream query for large ranges
+
+Example:
+
+```python
+all_symbols = client.get_symbols(market="um")
+usdt_symbols = client.get_symbols(market="um", quote_asset="USDT")
+tradable_usdt = client.get_symbols(
+    market="um",
+    quote_asset="USDT",
+    exclude_stable_base=True,
+)
+```
 
 ## Development
 

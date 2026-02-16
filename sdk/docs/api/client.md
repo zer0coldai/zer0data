@@ -48,15 +48,26 @@ df = client.get_klines(
 
 ```python
 df = client.get_symbols(market="um")
+
+usdt_df = client.get_symbols(market="um", quote_asset="USDT")
+
+tradable_usdt_df = client.get_symbols(
+    market="um",
+    quote_asset="USDT",
+    exclude_stable_base=True,
+)
 ```
 
 参数说明：
 
 - `market`: `str`，可选 `spot` / `um` / `cm`，默认 `um`
+- `quote_asset`: `str | None`，例如 `USDT`；不传时返回该市场全部 symbols
+- `exclude_stable_base`: `bool`，默认 `False`；设为 `True` 时过滤稳定币 `baseAsset`
 
 返回字段：
 
 - `symbol`
+- `quoteAsset`
 - `onboardDate`
 - `deliveryDate`
 - `underlyingType`

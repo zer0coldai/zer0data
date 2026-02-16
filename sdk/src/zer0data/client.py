@@ -114,9 +114,22 @@ class Client:
             limit=limit,
         )
 
-    def get_symbols(self, market: str = "um") -> pl.DataFrame:
+    def get_symbols(
+        self,
+        market: str = "um",
+        quote_asset: Optional[str] = None,
+        exclude_stable_base: bool = False,
+    ) -> pl.DataFrame:
         """Direct SDK entrypoint for querying symbol metadata."""
-        return self.symbols.query(market=market)
+        if quote_asset is None and not exclude_stable_base:
+            return self.symbols.query(market=market)
+        if quote_asset is not None and not exclude_stable_base:
+            return self.symbols.query(market=market, quote_asset=quote_asset)
+        return self.symbols.query(
+            market=market,
+            quote_asset=quote_asset,
+            exclude_stable_base=exclude_stable_base,
+        )
 
     def __enter__(self):
         """Context manager entry"""

@@ -147,6 +147,60 @@ def test_client_get_symbols_delegates_to_symbols_service(monkeypatch):
     client.close()
 
 
+def test_client_get_symbols_delegates_quote_asset(monkeypatch):
+    """Client should pass optional quote_asset to SymbolService query."""
+    from zer0data import client as client_module
+
+    class _MockCHClient:
+        def close(self):
+            return None
+
+    monkeypatch.setattr(client_module.clickhouse_connect, "get_client", lambda **_: _MockCHClient())
+    client = Client()
+    calls = {}
+
+    def _fake_query(**kwargs):
+        calls["kwargs"] = kwargs
+        return "mock-symbols-result"
+
+    monkeypatch.setattr(client.symbols, "query", _fake_query)
+
+    result = client.get_symbols(market="um", quote_asset="USDT")
+
+    assert result == "mock-symbols-result"
+    assert calls["kwargs"] == {"market": "um", "quote_asset": "USDT"}
+    client.close()
+
+
+def test_client_get_symbols_delegates_exclude_stable_base(monkeypatch):
+    """Client should pass optional exclude_stable_base to SymbolService query."""
+    from zer0data import client as client_module
+
+    class _MockCHClient:
+        def close(self):
+            return None
+
+    monkeypatch.setattr(client_module.clickhouse_connect, "get_client", lambda **_: _MockCHClient())
+    client = Client()
+    calls = {}
+
+    def _fake_query(**kwargs):
+        calls["kwargs"] = kwargs
+        return "mock-symbols-result"
+
+    monkeypatch.setattr(client.symbols, "query", _fake_query)
+
+    result = client.get_symbols(market="um", quote_asset="USDT", exclude_stable_base=True)
+
+    assert result == "mock-symbols-result"
+    assert calls["kwargs"] == {
+        "market": "um",
+        "quote_asset": "USDT",
+        "exclude_stable_base": True,
+    }
+    client.close()
+
+
 def test_client_reads_clickhouse_config_from_env(monkeypatch):
     """Client() should read clickhouse config from environment variables."""
     from zer0data import client as client_module
