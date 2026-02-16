@@ -73,6 +73,100 @@ class ClickHouseWriter:
         df_ordered = df[KLINE_COLUMNS]
         self.client.insert_df(table, df_ordered)
 
+    def has_data_for_date(
+        self, symbol: str, interval: str, date_str: str
+    ) -> bool:
+        """Check if data exists for a specific symbol, interval, and date.
+
+        Args:
+            symbol: Trading symbol (e.g., "BTCUSDT").
+            interval: The k-line interval (e.g., "1m", "1h").
+            date_str: Date string in format "YYYY-MM-DD".
+
+        Returns:
+            True if any data exists for the given date, False otherwise.
+        """
+        if not is_valid_interval(interval):
+            return False
+
+        table = self._get_table_name(interval)
+
+        # Convert date string to timestamp range (milliseconds)
+        date = pd.to_datetime(date_str)
+        start_ts = int(date.timestamp() * 1000)
+        end_ts = int((date + pd.Timedelta(days=1)).timestamp() * 1000)
+
+        query = f"""
+            SELECT count() as cnt
+            FROM {table}
+            WHERE symbol = %(symbol)s
+              AND open_time >= %(start_ts)s
+              AND open_time < %(end_ts)s
+        """
+
+        result = self.client.query(
+            query,
+            parameters={
+                "symbol": symbol,
+                "start_ts": start_ts,
+                "end_ts": end_ts,
+            }
+        )
+
+        if result.result_rows:
+            return result.result_rows[0][0] > 0
+        return False
+
+    def has_data_for_month(
+        self, symbol: str, interval: str, year: int, month: int
+    ) -> bool:
+        """Check if data exists for a specific symbol, interval, and month.
+
+        Args:
+            symbol: Trading symbol (e.g., "BTCUSDT").
+            interval: The k-line interval (e.g., "1m", "1h").
+            year: Year (e.g., 2025).
+            month: Month (1-12).
+
+        Returns:
+            True if any data exists for the given month, False otherwise.
+        """
+        if not is_valid_interval(interval):
+            return False
+
+        table = self._get_table_name(interval)
+
+        # Convert to timestamp range for the entire month
+        start_date = pd.Timestamp(year=year, month=month, day=1)
+        if month == 12:
+            end_date = pd.Timestamp(year=year + 1, month=1, day=1)
+        else:
+            end_date = pd.Timestamp(year=year, month=month + 1, day=1)
+
+        start_ts = int(start_date.timestamp() * 1000)
+        end_ts = int(end_date.timestamp() * 1000)
+
+        query = f"""
+            SELECT count() as cnt
+            FROM {table}
+            WHERE symbol = %(symbol)s
+              AND open_time >= %(start_ts)s
+              AND open_time < %(end_ts)s
+        """
+
+        result = self.client.query(
+            query,
+            parameters={
+                "symbol": symbol,
+                "start_ts": start_ts,
+                "end_ts": end_ts,
+            }
+        )
+
+        if result.result_rows:
+            return result.result_rows[0][0] > 0
+        return False
+
     def close(self) -> None:
         """Close the underlying ClickHouse client."""
         self.client.close()

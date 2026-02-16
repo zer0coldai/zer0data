@@ -94,22 +94,36 @@ def cli(
     default="**/*.zip",
     help="File pattern to match (default: **/*.zip)",
 )
+@click.option(
+    "--force",
+    "-f",
+    is_flag=True,
+    default=False,
+    help="Force re-import of data even if it already exists",
+)
 @click.pass_context
 def ingest_from_dir(
     ctx: click.Context,
     source: str,
     symbols: tuple,
     pattern: str,
+    force: bool,
 ) -> None:
     """Ingest kline data from a directory of downloaded zip files.
 
     Download data first using binance-public-data scripts, then ingest with this command.
     Interval is automatically extracted from each filename (e.g. BTCUSDT-1h-2024-01-01.zip).
 
+    By default, files with existing data are skipped (incremental import).
+    Use --force to re-import all data.
+
     Examples:
 
-        # Ingest all files from directory
+        # Ingest all files from directory (skip existing data)
         zer0data-ingestor ingest-from-dir --source ./data/download
+
+        # Force re-import all data
+        zer0data-ingestor ingest-from-dir --source ./data/download --force
 
         # Ingest specific symbols only
         zer0data-ingestor ingest-from-dir --source ./data/download --symbols BTCUSDT --symbols ETHUSDT
@@ -124,6 +138,7 @@ def ingest_from_dir(
     else:
         click.echo("Symbols: ALL")
     click.echo(f"Pattern: {pattern}")
+    click.echo(f"Mode: {'FORCE (re-import all)' if force else 'INCREMENTAL (skip existing)'}")
     click.echo(
         f"ClickHouse: {config.clickhouse.host}:{config.clickhouse.port}"
         f"/{config.clickhouse.database}"
@@ -135,6 +150,7 @@ def ingest_from_dir(
                 source=source,
                 symbols=symbols_list,
                 pattern=pattern,
+                force=force,
             )
 
         click.echo(f"\nIngestion completed:")

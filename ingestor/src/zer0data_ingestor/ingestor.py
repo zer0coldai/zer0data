@@ -2,6 +2,7 @@
 
 import logging
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Dict, List, Optional
 
 import pandas as pd
@@ -59,6 +60,7 @@ class KlineIngestor:
         source: str,
         symbols: Optional[List[str]] = None,
         pattern: str = "**/*.zip",
+        force: bool = False,
     ) -> IngestStats:
         """Ingest kline data from a directory of zip files.
 
@@ -66,6 +68,7 @@ class KlineIngestor:
             source: Path to directory containing zip files.
             symbols: Optional list of symbols to filter.
             pattern: Glob pattern for matching files.
+            force: If True, re-import data even if it already exists.
 
         Returns:
             IngestStats with ingestion statistics.
@@ -75,9 +78,10 @@ class KlineIngestor:
 
         stats = IngestStats()
         symbols_seen: set[str] = set()
+        files_skipped = 0
 
         try:
-            for symbol, interval, df in self.parser.parse_directory(
+            for symbol, interval, df, file_path in self.parser.parse_directory_with_path(
                 source,
                 symbols,
                 pattern=pattern,
@@ -89,6 +93,39 @@ class KlineIngestor:
                 _ts_start = pd.Timestamp(int(df["open_time"].iloc[0]), unit="ms")
                 _ts_end = pd.Timestamp(int(df["open_time"].iloc[-1]), unit="ms")
                 _range = f"{_ts_start:%Y-%m-%d} ~ {_ts_end:%Y-%m-%d}"
+
+                # Check if data already exists (incremental import)
+                if not force:
+                    from zer0data_ingestor.parser.zip_parser import extract_date_from_filename
+                    date_str = extract_date_from_filename(file_path)
+                    if date_str:
+                        # Determine if this is a monthly or daily file
+                        # Monthly files have date_str ending in -01 and the filename has only YYYY-MM
+                        file_name = Path(file_path).stem
+                        parts = file_name.split("-")
+
+                        # Check if it's a monthly file (SYMBOL-INTERVAL-YYYY-MM)
+                        is_monthly = len(parts) == 4 and date_str.endswith("-01")
+
+                        if is_monthly:
+                            # Extract year and month from date_str
+                            date_obj = pd.to_datetime(date_str)
+                            if self.writer.has_data_for_month(symbol, interval, date_obj.year, date_obj.month):
+                                logger.info(
+                                    "[%d] Skipping %s %s %s (data already exists)",
+                                    stats.files_processed, symbol, interval, date_str[:7],
+                                )
+                                files_skipped += 1
+                                continue
+                        else:
+                            # Daily file
+                            if self.writer.has_data_for_date(symbol, interval, date_str):
+                                logger.info(
+                                    "[%d] Skipping %s %s %s (data already exists)",
+                                    stats.files_processed, symbol, interval, date_str,
+                                )
+                                files_skipped += 1
+                                continue
 
                 logger.info(
                     "[%d] Processing %s %s  %s  (%d rows)",
@@ -134,10 +171,13 @@ class KlineIngestor:
         stats.symbols_processed = len(symbols_seen)
 
         logger.info(
-            "Ingestion complete: %d records written, "
+            "Ingestion complete: %d files processed, %d files skipped, "
+            "%d records written, "
             "%d duplicates removed, "
             "%d gaps filled, "
             "%d invalid records removed",
+            stats.files_processed,
+            files_skipped,
             stats.records_written,
             stats.duplicates_removed,
             stats.gaps_filled,

@@ -46,6 +46,49 @@ def extract_interval_from_filename(filename: str) -> str:
     )
 
 
+def extract_date_from_filename(filename: str) -> Optional[str]:
+    """Extract date from a Binance kline filename.
+
+    Binance filename formats:
+    - Daily: SYMBOL-INTERVAL-YYYY-MM-DD.zip -> 2024-01-01
+    - Monthly: SYMBOL-INTERVAL-YYYY-MM.zip -> 2025-01-01 (first day of month)
+
+    Args:
+        filename: The filename or path to extract date from
+
+    Returns:
+        The extracted date string (e.g., "2024-01-01") or None if not found
+
+    Examples:
+        >>> extract_date_from_filename("BTCUSDT-1h-2024-01-01.zip")
+        '2024-01-01'
+        >>> extract_date_from_filename("BTCUSDT-1h-2025-01.zip")
+        '2025-01-01'
+    """
+    name = Path(filename).stem
+    parts = name.split("-")
+
+    # Try daily format: SYMBOL-INTERVAL-YYYY-MM-DD
+    if len(parts) >= 5:
+        try:
+            date_str = f"{parts[2]}-{parts[3]}-{parts[4]}"
+            pd.to_datetime(date_str)
+            return date_str
+        except (ValueError, IndexError):
+            pass
+
+    # Try monthly format: SYMBOL-INTERVAL-YYYY-MM
+    if len(parts) >= 4:
+        try:
+            date_str = f"{parts[2]}-{parts[3]}-01"
+            pd.to_datetime(date_str)
+            return date_str
+        except (ValueError, IndexError):
+            pass
+
+    return None
+
+
 class KlineParser:
     """Parser for Binance kline data from zip files.
 
@@ -150,6 +193,32 @@ class KlineParser:
         Raises:
             FileNotFoundError: If directory does not exist.
         """
+        for symbol, interval, df, _ in self.parse_directory_with_path(
+            dir_path, symbols, intervals, pattern
+        ):
+            yield (symbol, interval, df)
+
+    def parse_directory_with_path(
+        self,
+        dir_path: str,
+        symbols: Optional[List[str]] = None,
+        intervals: Optional[List[str]] = None,
+        pattern: str = "**/*.zip",
+    ) -> Iterator[Tuple[str, str, pd.DataFrame, str]]:
+        """Parse all zip files in a directory, including file paths.
+
+        Args:
+            dir_path: Path to the directory containing zip files
+            symbols: Optional list of symbols to filter.
+            intervals: Optional list of intervals to filter.
+            pattern: Glob pattern for matching files (default: "**/*.zip")
+
+        Yields:
+            Tuples of (symbol, interval, DataFrame, file_path)
+
+        Raises:
+            FileNotFoundError: If directory does not exist.
+        """
         dir_p = Path(dir_path)
         if not dir_p.exists():
             raise FileNotFoundError(f"Directory not found: {dir_path}")
@@ -182,11 +251,11 @@ class KlineParser:
             if interval_filter is not None and file_interval not in interval_filter:
                 continue
 
-            # Parse the zip file and yield DataFrame
+            # Parse the zip file and yield DataFrame with file path
             try:
                 df = self.parse_file(str(zip_path), symbol)
                 if not df.empty:
-                    yield (symbol, file_interval, df)
+                    yield (symbol, file_interval, df, str(zip_path))
             except (FileNotFoundError, ValueError) as exc:
                 logger.warning("Skipping unparseable file %s: %s", zip_path, exc)
                 continue
