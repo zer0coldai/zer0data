@@ -112,6 +112,19 @@ df = Client().kline.query(
 print(df)
 ```
 
+### 7. 保存 Binance `exchangeInfo` 原始 JSON 到 ClickHouse
+
+```bash
+# 默认抓取 um（U 本位）并写入 zer0data.raw_exchange_info
+python scripts/fetch_exchange_info.py
+
+# 同时抓取 spot/um/cm
+python scripts/fetch_exchange_info.py --markets spot um cm
+
+# 仅测试网络与 JSON 结构，不写库
+python scripts/fetch_exchange_info.py --markets um --dry-run
+```
+
 详细文档请参考 [Docker 部署指南](docker/README.md)
 
 ## 项目结构
