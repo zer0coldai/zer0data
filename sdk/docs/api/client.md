@@ -42,6 +42,26 @@ df = client.get_klines(
 - `end`: `str | int | datetime | None`
 - `limit`: `int | None`
 
+## `Client.get_symbols(...)`
+
+查询最新一版 `exchangeInfo` 的 symbols 元数据（来自 `raw_exchange_info`），返回 `polars.DataFrame`。
+
+```python
+df = client.get_symbols(market="um")
+```
+
+参数说明：
+
+- `market`: `str`，可选 `spot` / `um` / `cm`，默认 `um`
+
+返回字段：
+
+- `symbol`
+- `onboardDate`
+- `deliveryDate`
+- `underlyingType`
+- `status`
+
 ## 关闭连接
 
 ```python

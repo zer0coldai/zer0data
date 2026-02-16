@@ -10,6 +10,7 @@ import clickhouse_connect
 import polars as pl
 
 from zer0data.kline import KlineService
+from zer0data.symbols import SymbolService
 
 
 @dataclass
@@ -76,6 +77,7 @@ class Client:
             password=self.config.password,
         )
         self._kline: Optional[KlineService] = None
+        self._symbols: Optional[SymbolService] = None
 
     @property
     def kline(self) -> KlineService:
@@ -83,6 +85,13 @@ class Client:
         if self._kline is None:
             self._kline = KlineService(self._client, self.config.database)
         return self._kline
+
+    @property
+    def symbols(self) -> SymbolService:
+        """Get the symbols service"""
+        if self._symbols is None:
+            self._symbols = SymbolService(self._client, self.config.database)
+        return self._symbols
 
     def close(self):
         """Close the client connection"""
@@ -104,6 +113,10 @@ class Client:
             end=end,
             limit=limit,
         )
+
+    def get_symbols(self, market: str = "um") -> pl.DataFrame:
+        """Direct SDK entrypoint for querying symbol metadata."""
+        return self.symbols.query(market=market)
 
     def __enter__(self):
         """Context manager entry"""

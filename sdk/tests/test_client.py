@@ -122,6 +122,31 @@ def test_client_get_klines_delegates_to_kline_service(monkeypatch):
     client.close()
 
 
+def test_client_get_symbols_delegates_to_symbols_service(monkeypatch):
+    """Client should provide a direct symbols query entrypoint."""
+    from zer0data import client as client_module
+
+    class _MockCHClient:
+        def close(self):
+            return None
+
+    monkeypatch.setattr(client_module.clickhouse_connect, "get_client", lambda **_: _MockCHClient())
+    client = Client()
+    calls = {}
+
+    def _fake_query(**kwargs):
+        calls["kwargs"] = kwargs
+        return "mock-symbols-result"
+
+    monkeypatch.setattr(client.symbols, "query", _fake_query)
+
+    result = client.get_symbols(market="um")
+
+    assert result == "mock-symbols-result"
+    assert calls["kwargs"] == {"market": "um"}
+    client.close()
+
+
 def test_client_reads_clickhouse_config_from_env(monkeypatch):
     """Client() should read clickhouse config from environment variables."""
     from zer0data import client as client_module
