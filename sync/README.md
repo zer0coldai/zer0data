@@ -30,7 +30,7 @@ flowchart LR
 ### 第一步：创建 R2 Bucket
 
 1. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com) → R2 Object Storage
-2. 点击 **Create bucket**，名称填 `zer0data`，区域选 **WEUR**
+2. 点击 **Create bucket**，名称填 `zer0data`，区域选离数据下载服务器最近的区域（如服务器在亚太选 **APAC**，在美东选 **ENAM**，在欧洲选 **WEUR**）
 3. 进入 **Manage R2 API Tokens** → **Create Account API token**
    - 权限：**Object Read & Write**
    - 范围：**Apply to specific buckets only** → `zer0data`
