@@ -6,8 +6,8 @@ readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "zer0data" }]
 dependencies = [
-    "clickhouse-connect ~=0.7.0",
-    "polars ~=0.20",
+    "clickhouse-connect ~=0.11.0",
+    "polars ~=1.38.1",
 ]
 
 [project.optional-dependencies]
