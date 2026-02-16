@@ -107,11 +107,13 @@ def run_ingest(cfg: OpsConfig, state: SyncState) -> None:
                 stats = ingestor.ingest_from_directory(
                     source=cfg.local.data_dir,
                     pattern=marker.glob_pattern,
+                    force=False,  # Use incremental import by default
                 )
                 logger.info(
-                    "Marker %s done: %d records written, %d duplicates removed, "
-                    "%d gaps filled, %d invalid removed",
+                    "Marker %s done: %d files processed, %d records written, "
+                    "%d duplicates removed, %d gaps filled, %d invalid removed",
                     marker.name,
+                    stats.files_processed,
                     stats.records_written,
                     stats.duplicates_removed,
                     stats.gaps_filled,
