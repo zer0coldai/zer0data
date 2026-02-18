@@ -279,3 +279,387 @@ def test_client_from_env_factory(monkeypatch):
     }
 
     client.close()
+
+
+# FactorService tests
+
+
+def test_factor_query_long_format(monkeypatch):
+    """Test FactorService.query with long format (default)."""
+    from zer0data import factor as factor_module
+
+    class _MockQueryResult:
+        result_rows = [
+            ("BTCUSDT", 1704067200000, "price_usd", 42500.50),
+            ("BTCUSDT", 1704067200000, "volume", 1234567.89),
+        ]
+        column_names = ["symbol", "datetime", "factor_name", "factor_value"]
+
+    class _MockCHClient:
+        def close(self):
+            return None
+
+        def query(self, sql):
+            return _MockQueryResult()
+
+    monkeypatch.setattr(factor_module.clickhouse_connect, "get_client", lambda **_: _MockCHClient())
+    from zer0data import Client
+
+    client = Client()
+    # Access factors property to initialize the service
+    _ = client.factors
+
+    result = client.get_factors(
+        symbols="BTCUSDT", factor_names="price_usd", format="long"
+    )
+
+    assert result.shape == (2, 4)
+    assert result.columns == ["symbol", "datetime", "factor_name", "factor_value"]
+    assert result["symbol"][0] == "BTCUSDT"
+    assert result["factor_name"][0] == "price_usd"
+    client.close()
+
+
+def test_factor_query_wide_format(monkeypatch):
+    """Test FactorService.query with wide format."""
+    from zer0data import factor as factor_module
+
+    class _MockQueryResult:
+        result_rows = [
+            ("BTCUSDT", 1704067200000, "price_usd", 42500.50),
+            ("BTCUSDT", 1704067200000, "volume", 1234567.89),
+        ]
+        column_names = ["symbol", "datetime", "factor_name", "factor_value"]
+
+    class _MockCHClient:
+        def close(self):
+            return None
+
+        def query(self, sql):
+            return _MockQueryResult()
+
+    monkeypatch.setattr(factor_module.clickhouse_connect, "get_client", lambda **_: _MockCHClient())
+    from zer0data import Client
+
+    client = Client()
+    # Access factors property to initialize the service
+    _ = client.factors
+
+    result = client.get_factors(
+        symbols="BTCUSDT", factor_names=["price_usd", "volume"], format="wide"
+    )
+
+    assert result.shape == (1, 4)
+    assert "price_usd" in result.columns
+    assert "volume" in result.columns
+    assert result["symbol"][0] == "BTCUSDT"
+    client.close()
+
+
+def test_factor_query_single_symbol_factor(monkeypatch):
+    """Test FactorService.query with single symbol and factor."""
+    from zer0data import factor as factor_module
+
+    class _MockQueryResult:
+        result_rows = [("BTCUSDT", 1704067200000, "price_usd", 42500.50)]
+        column_names = ["symbol", "datetime", "factor_name", "factor_value"]
+
+    class _MockCHClient:
+        def close(self):
+            return None
+
+        def query(self, sql):
+            return _MockQueryResult()
+
+    monkeypatch.setattr(factor_module.clickhouse_connect, "get_client", lambda **_: _MockCHClient())
+    from zer0data import Client
+
+    client = Client()
+    # Access factors property to initialize the service
+    _ = client.factors
+
+    result = client.get_factors(symbols="BTCUSDT", factor_names="price_usd")
+
+    assert result.shape == (1, 4)
+    assert result["symbol"][0] == "BTCUSDT"
+    assert result["factor_name"][0] == "price_usd"
+    client.close()
+
+
+def test_factor_query_multiple_symbols_factors(monkeypatch):
+    """Test FactorService.query with multiple symbols and factors."""
+    from zer0data import factor as factor_module
+
+    class _MockQueryResult:
+        result_rows = [
+            ("BTCUSDT", 1704067200000, "price_usd", 42500.50),
+            ("ETHUSDT", 1704067200000, "price_usd", 2250.75),
+        ]
+        column_names = ["symbol", "datetime", "factor_name", "factor_value"]
+
+    class _MockCHClient:
+        def close(self):
+            return None
+
+        def query(self, sql):
+            return _MockQueryResult()
+
+    monkeypatch.setattr(factor_module.clickhouse_connect, "get_client", lambda **_: _MockCHClient())
+    from zer0data import Client
+
+    client = Client()
+    # Access factors property to initialize the service
+    _ = client.factors
+
+    result = client.get_factors(
+        symbols=["BTCUSDT", "ETHUSDT"], factor_names=["price_usd"]
+    )
+
+    assert result.shape == (2, 4)
+    client.close()
+
+
+def test_factor_normalize_symbols():
+    """Test _normalize_symbols normalizes and deduplicates symbols."""
+    from zer0data.factor import FactorService
+
+    class _MockCHClient:
+        def close(self):
+            return None
+
+    service = FactorService(_MockCHClient(), "zer0data")
+
+    # Single string
+    assert service._normalize_symbols("BTCUSDT") == ["BTCUSDT"]
+
+    # List of symbols
+    assert service._normalize_symbols(["BTCUSDT", "ETHUSDT"]) == ["BTCUSDT", "ETHUSDT"]
+
+    # Deduplication
+    assert service._normalize_symbols(["BTCUSDT", "BTCUSDT", "ETHUSDT"]) == [
+        "BTCUSDT",
+        "ETHUSDT",
+    ]
+
+
+def test_factor_normalize_symbols_empty_raises_error():
+    """Test _normalize_symbols raises error for empty symbols."""
+    from zer0data.factor import FactorService
+
+    class _MockCHClient:
+        def close(self):
+            return None
+
+    service = FactorService(_MockCHClient(), "zer0data")
+
+    with pytest.raises(ValueError, match="symbols must be a non-empty"):
+        service._normalize_symbols([])
+
+    with pytest.raises(ValueError, match="symbols must be a non-empty"):
+        service._normalize_symbols([])
+
+
+def test_factor_normalize_factor_names():
+    """Test _normalize_factor_names normalizes and deduplicates factor_names."""
+    from zer0data.factor import FactorService
+
+    class _MockCHClient:
+        def close(self):
+            return None
+
+    service = FactorService(_MockCHClient(), "zer0data")
+
+    # Single string
+    assert service._normalize_factor_names("price_usd") == ["price_usd"]
+
+    # List of factors
+    assert service._normalize_factor_names(["price_usd", "volume"]) == [
+        "price_usd",
+        "volume",
+    ]
+
+    # Deduplication
+    assert service._normalize_factor_names(["price_usd", "price_usd", "volume"]) == [
+        "price_usd",
+        "volume",
+    ]
+
+
+def test_factor_normalize_factor_names_empty_raises_error():
+    """Test _normalize_factor_names raises error for empty factor_names."""
+    from zer0data.factor import FactorService
+
+    class _MockCHClient:
+        def close(self):
+            return None
+
+    service = FactorService(_MockCHClient(), "zer0data")
+
+    with pytest.raises(ValueError, match="factor_names must be a non-empty"):
+        service._normalize_factor_names([])
+
+    with pytest.raises(ValueError, match="factor_names must be a non-empty"):
+        service._normalize_factor_names([])
+
+
+def test_factor_validate_format():
+    """Test _validate_format validates format parameter."""
+    from zer0data.factor import FactorService
+
+    class _MockCHClient:
+        def close(self):
+            return None
+
+    service = FactorService(_MockCHClient(), "zer0data")
+
+    # Valid formats
+    assert service._validate_format("long") == "long"
+    assert service._validate_format("wide") == "wide"
+    assert service._validate_format("LONG") == "long"
+    assert service._validate_format("WIDE") == "wide"
+
+    # Invalid format
+    with pytest.raises(ValueError, match="format must be 'long' or 'wide'"):
+        service._validate_format("invalid")
+
+
+def test_factor_build_where_clause():
+    """Test _build_where_clause builds correct SQL WHERE clause."""
+    from zer0data.factor import FactorService
+
+    class _MockCHClient:
+        def close(self):
+            return None
+
+    service = FactorService(_MockCHClient(), "zer0data")
+
+    # Only symbols and factor_names
+    where = service._build_where_clause(["BTCUSDT"], ["price_usd"], None, None)
+    assert "symbol IN ('BTCUSDT')" in where
+    assert "factor_name IN ('price_usd')" in where
+
+    # With time range
+    where = service._build_where_clause(
+        ["BTCUSDT", "ETHUSDT"], ["price_usd"], "2024-01-01", "2024-01-02"
+    )
+    assert "symbol IN ('BTCUSDT', 'ETHUSDT')" in where
+    assert "factor_name IN ('price_usd')" in where
+    assert "datetime >=" in where
+    assert "datetime <=" in where
+
+
+def test_factor_query_empty_symbols_raises_error(monkeypatch):
+    """Test FactorService.query raises error for empty symbols."""
+    from zer0data.factor import FactorService
+
+    class _MockCHClient:
+        def close(self):
+            return None
+
+    monkeypatch.setattr(__import__('zer0data.factor', fromlist=['clickhouse_connect']).clickhouse_connect, "get_client", lambda **_: _MockCHClient())
+    from zer0data import Client
+
+    client = Client()
+
+    with pytest.raises(ValueError, match="symbols must be a non-empty"):
+        client.get_factors(symbols=[], factor_names="price_usd")
+
+    client.close()
+
+
+def test_factor_query_empty_factor_names_raises_error(monkeypatch):
+    """Test FactorService.query raises error for empty factor_names."""
+    from zer0data.factor import FactorService
+
+    class _MockCHClient:
+        def close(self):
+            return None
+
+    monkeypatch.setattr(__import__('zer0data.factor', fromlist=['clickhouse_connect']).clickhouse_connect, "get_client", lambda **_: _MockCHClient())
+    from zer0data import Client
+
+    client = Client()
+
+    with pytest.raises(ValueError, match="factor_names must be a non-empty"):
+        client.get_factors(symbols="BTCUSDT", factor_names=[])
+
+    client.close()
+
+
+def test_factor_query_invalid_format_raises_error(monkeypatch):
+    """Test FactorService.query raises error for invalid format."""
+    from zer0data.factor import FactorService
+
+    class _MockCHClient:
+        def close(self):
+            return None
+
+    monkeypatch.setattr(__import__('zer0data.factor', fromlist=['clickhouse_connect']).clickhouse_connect, "get_client", lambda **_: _MockCHClient())
+    from zer0data import Client
+
+    client = Client()
+
+    with pytest.raises(ValueError, match="format must be 'long' or 'wide'"):
+        client.get_factors(symbols="BTCUSDT", factor_names="price_usd", format="invalid")
+
+    client.close()
+
+
+def test_client_get_factors_delegates_to_factor_service(monkeypatch):
+    """Client should provide a direct factor query entrypoint."""
+    from zer0data import client as client_module
+
+    class _MockCHClient:
+        def close(self):
+            return None
+
+    monkeypatch.setattr(client_module.clickhouse_connect, "get_client", lambda **_: _MockCHClient())
+    from zer0data import Client
+
+    client = Client()
+    calls = {}
+
+    def _fake_query(**kwargs):
+        calls["kwargs"] = kwargs
+        return "mock-factors-result"
+
+    monkeypatch.setattr(client.factors, "query", _fake_query)
+
+    result = client.get_factors(
+        symbols=["BTCUSDT"],
+        factor_names=["price_usd"],
+        start="2024-01-01",
+        end="2024-01-02",
+        format="wide",
+    )
+
+    assert result == "mock-factors-result"
+    assert calls["kwargs"] == {
+        "symbols": ["BTCUSDT"],
+        "factor_names": ["price_usd"],
+        "start": "2024-01-01",
+        "end": "2024-01-02",
+        "format": "wide",
+    }
+    client.close()
+
+
+def test_client_factors_property_creates_service(monkeypatch):
+    """Test factors property creates FactorService lazily."""
+    from zer0data import client as client_module
+
+    class _MockCHClient:
+        def close(self):
+            return None
+
+    monkeypatch.setattr(client_module.clickhouse_connect, "get_client", lambda **_: _MockCHClient())
+    from zer0data import Client
+
+    client = Client()
+    assert client._factors is None
+    factors_service = client.factors
+    assert client._factors is not None
+    assert factors_service is client._factors
+    # Calling again should return the same instance
+    assert client.factors is factors_service
+    client.close()

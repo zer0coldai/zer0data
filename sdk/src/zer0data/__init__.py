@@ -7,5 +7,6 @@ __version__ = "0.1.0"
 from zer0data.client import Client, ClientConfig
 from zer0data.kline import KlineService
 from zer0data.symbols import SymbolService
+from zer0data.factor import FactorService
 
-__all__ = ["__version__", "Client", "ClientConfig", "KlineService", "SymbolService"]
+__all__ = ["__version__", "Client", "ClientConfig", "KlineService", "SymbolService", "FactorService"]

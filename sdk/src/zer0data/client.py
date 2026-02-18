@@ -11,6 +11,7 @@ import polars as pl
 
 from zer0data.kline import KlineService
 from zer0data.symbols import SymbolService
+from zer0data.factor import FactorService
 
 
 @dataclass
@@ -78,6 +79,7 @@ class Client:
         )
         self._kline: Optional[KlineService] = None
         self._symbols: Optional[SymbolService] = None
+        self._factors: Optional[FactorService] = None
 
     @property
     def kline(self) -> KlineService:
@@ -92,6 +94,13 @@ class Client:
         if self._symbols is None:
             self._symbols = SymbolService(self._client, self.config.database)
         return self._symbols
+
+    @property
+    def factors(self) -> FactorService:
+        """Get the factors service"""
+        if self._factors is None:
+            self._factors = FactorService(self._client, self.config.database)
+        return self._factors
 
     def close(self):
         """Close the client connection"""
@@ -129,6 +138,23 @@ class Client:
             market=market,
             quote_asset=quote_asset,
             exclude_stable_base=exclude_stable_base,
+        )
+
+    def get_factors(
+        self,
+        symbols: Union[str, list[str]],
+        factor_names: Union[str, list[str]],
+        start: Optional[Union[str, int, datetime]] = None,
+        end: Optional[Union[str, int, datetime]] = None,
+        format: str = "long",
+    ) -> pl.DataFrame:
+        """Direct SDK entrypoint for querying factor data."""
+        return self.factors.query(
+            symbols=symbols,
+            factor_names=factor_names,
+            start=start,
+            end=end,
+            format=format,
         )
 
     def __enter__(self):
