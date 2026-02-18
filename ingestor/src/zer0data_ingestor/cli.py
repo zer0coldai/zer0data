@@ -238,6 +238,7 @@ def ingest_source_exchange_info(
 @click.option("--head", type=int, default=3, show_default=True)
 @click.option("--tail", type=int, default=3, show_default=True)
 @click.option("--batch-size", type=int, default=100000, show_default=True)
+@click.option("--max-partitions-per-insert-block", type=int, default=1000, show_default=True)
 @click.option("--dry-run", is_flag=True, default=False)
 @click.pass_context
 def ingest_source_coinmetrics(
@@ -248,6 +249,7 @@ def ingest_source_coinmetrics(
     head: int,
     tail: int,
     batch_size: int,
+    max_partitions_per_insert_block: int,
     dry_run: bool,
 ) -> None:
     """Fetch CoinMetrics CSV and ingest factors table."""
@@ -260,6 +262,7 @@ def ingest_source_coinmetrics(
             head=head,
             tail=tail,
             batch_size=batch_size,
+            max_partitions_per_insert_block=max_partitions_per_insert_block,
             dry_run=dry_run,
             log_level="INFO",
         )

@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
+import pandas as pd
+
 from zer0data_ingestor.fetcher.sources.coinmetrics import build_factor_dataframe
+from zer0data_ingestor.fetcher.sources.coinmetrics import flush_batch
 
 
 def test_build_factor_dataframe_drops_non_numeric_values() -> None:
@@ -30,3 +35,31 @@ def test_build_factor_dataframe_drops_non_numeric_values() -> None:
     assert ("ReferenceRate", 0.6522499227) in pairs
     assert ("ReferenceRate", 0.6492553905) in pairs
     assert not any(name == "Note" for name in df["factor_name"])
+
+
+def test_flush_batch_passes_max_partitions_setting() -> None:
+    mock_client = MagicMock()
+    batch = [
+        pd.DataFrame(
+            [
+                {
+                    "symbol": "btc",
+                    "datetime": pd.Timestamp("2026-01-01T00:00:00Z"),
+                    "factor_name": "ReferenceRateUSD",
+                    "factor_value": 100.0,
+                    "source": "coinmetrics",
+                }
+            ]
+        )
+    ]
+
+    written = flush_batch(
+        mock_client,
+        batch,
+        max_partitions_per_insert_block=1000,
+    )
+
+    assert written == 1
+    mock_client.insert_df.assert_called_once()
+    settings = mock_client.insert_df.call_args.kwargs["settings"]
+    assert settings["max_partitions_per_insert_block"] == 1000

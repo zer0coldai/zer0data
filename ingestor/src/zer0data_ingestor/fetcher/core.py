@@ -70,9 +70,9 @@ def log_csv_preview(name: str, text: str, head: int = 3, tail: int = 3) -> None:
     lines = text.splitlines()
     logger.info("[%s] preview head=%d tail=%d total_lines=%d", name, head, tail, len(lines))
     for idx, line in enumerate(lines[:head], start=1):
-        logger.info("[%s][head:%d] %s", name, idx, line)
+        logger.debug("[%s][head:%d] %s", name, idx, line)
 
     if tail > 0 and len(lines) > head:
         tail_buf: Iterable[str] = deque(lines[-tail:], maxlen=tail)
         for idx, line in enumerate(tail_buf, start=1):
-            logger.info("[%s][tail:%d] %s", name, idx, line)
+            logger.debug("[%s][tail:%d] %s", name, idx, line)

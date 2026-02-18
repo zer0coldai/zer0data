@@ -47,6 +47,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--tail", type=int, default=3, help="Preview tail lines per CSV (default: 3).")
     parser.add_argument("--batch-size", type=int, default=100_000, help="Batch rows for ClickHouse insert.")
     parser.add_argument(
+        "--max-partitions-per-insert-block",
+        type=int,
+        default=1000,
+        help="ClickHouse insert setting to allow wide historical inserts across many month partitions.",
+    )
+    parser.add_argument(
         "--symbols",
         nargs="+",
         default=None,
@@ -147,12 +153,18 @@ def build_factor_dataframe(symbol: str, csv_text: str) -> tuple[pd.DataFrame, Tr
     return narrowed, TransformStats(dropped_non_numeric=dropped_non_numeric)
 
 
-def flush_batch(client, batch: list[pd.DataFrame]) -> int:
+def flush_batch(client, batch: list[pd.DataFrame], max_partitions_per_insert_block: int) -> int:
     if not batch:
         return 0
     merged = pd.concat(batch, ignore_index=True)
     merged["update_time"] = datetime.now(timezone.utc)
-    client.insert_df(TABLE_NAME, merged[["symbol", "datetime", "factor_name", "factor_value", "source", "update_time"]])
+    client.insert_df(
+        TABLE_NAME,
+        merged[["symbol", "datetime", "factor_name", "factor_value", "source", "update_time"]],
+        settings={
+            "max_partitions_per_insert_block": max_partitions_per_insert_block,
+        },
+    )
     return len(merged)
 
 
@@ -182,6 +194,7 @@ def run(args: argparse.Namespace) -> FetchResult:
         for index, path in enumerate(csv_paths, start=1):
             symbol = path.split("/")[-1].removesuffix(".csv")
             url = RAW_BASE + path
+            logger.info("[%d/%d] processing %s", index, len(csv_paths), path)
 
             try:
                 _, csv_text, _ = http_get_text(url, timeout=args.timeout, retries=args.retries)
@@ -203,7 +216,7 @@ def run(args: argparse.Namespace) -> FetchResult:
                 batch_rows += len(factor_df)
 
                 if batch_rows >= args.batch_size:
-                    written = flush_batch(client, batch)
+                    written = flush_batch(client, batch, args.max_partitions_per_insert_block)
                     result.rows_written += written
                     batch.clear()
                     batch_rows = 0
@@ -214,7 +227,7 @@ def run(args: argparse.Namespace) -> FetchResult:
                 continue
 
         if not args.dry_run and batch:
-            result.rows_written += flush_batch(client, batch)
+            result.rows_written += flush_batch(client, batch, args.max_partitions_per_insert_block)
     finally:
         if client is not None:
             client.close()

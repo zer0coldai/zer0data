@@ -9,10 +9,6 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ../../data/download:/data
-    environment:
-      CLICKHOUSE_HOST: host.docker.internal
-      CLICKHOUSE_PORT: 8123
-      CLICKHOUSE_DB: zer0data
     logging:
       driver: "json-file"
       options:

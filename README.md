@@ -156,6 +156,7 @@ zer0data/
 
 - [设计文档](docs/plans/2025-02-10-zer0data-design.md)
 - [实施计划](docs/plans/2025-02-10-zer0data-implementation.md)
+- [CoinMetrics Docker 导入指南](ingestor/coinmetrics-docker-import-readme.md)
 
 ## License
 
