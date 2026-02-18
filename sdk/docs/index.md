@@ -1,6 +1,6 @@
 # zer0data SDK 文档
 
-`zer0data` 是一个面向 ClickHouse 的行情数据 SDK，当前提供 Kline 查询能力。
+`zer0data` 是一个面向 ClickHouse 的行情数据 SDK，当前提供 Kline、Symbols 和 Factors 查询能力。
 
 ## 你可以在这里找到
 
@@ -8,6 +8,7 @@
 - 环境变量配置规范
 - `Client.from_env()` 的推荐调用方式
 - `Client.get_klines(...)` 查询示例
+- `Client.get_factors(...)` 查询示例
 - 常见问题排查
 
 ## 快速入口

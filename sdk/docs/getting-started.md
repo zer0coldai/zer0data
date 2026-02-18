@@ -12,6 +12,8 @@ export ZER0DATA_CLICKHOUSE_PASSWORD=
 
 ## 2. 调用 SDK
 
+### 查询 Kline 数据
+
 ```python
 from zer0data import Client
 
@@ -23,6 +25,32 @@ df = client.get_klines(
     end="2025-01-02T00:00:00Z",
     limit=1000,
 )
+print(df.head())
+client.close()
+```
+
+### 查询因子数据
+
+```python
+from zer0data import Client
+
+client = Client.from_env()
+
+# 长格式查询（默认）
+df = client.get_factors(
+    symbols=["BTCUSDT", "ETHUSDT"],
+    factor_names=["price_usd", "volume"],
+    start="2024-01-01",
+    end="2024-01-02",
+)
+
+# 宽格式查询
+df_wide = client.get_factors(
+    symbols="BTCUSDT",
+    factor_names="price_usd",
+    format="wide"
+)
+
 print(df.head())
 client.close()
 ```

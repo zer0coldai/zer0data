@@ -73,6 +73,40 @@ tradable_usdt_df = client.get_symbols(
 - `underlyingType`
 - `status`
 
+## `Client.get_factors(...)`
+
+查询因子数据（来自 `zer0data.factors` 表），返回 `polars.DataFrame`。
+
+```python
+# 长格式查询（默认）
+df = client.get_factors(
+    symbols=["BTCUSDT", "ETHUSDT"],
+    factor_names=["price_usd", "volume"],
+    start="2024-01-01",
+    end="2024-01-02",
+)
+
+# 宽格式查询
+df_wide = client.get_factors(
+    symbols="BTCUSDT",
+    factor_names="price_usd",
+    format="wide"
+)
+```
+
+参数说明：
+
+- `symbols`: `str | list[str]` - 交易对（必填）
+- `factor_names`: `str | list[str]` - 因子名称（必填）
+- `start`: `str | int | datetime | None` - 开始时间
+- `end`: `str | int | datetime | None` - 结束时间
+- `format`: `str` - 输出格式，`"long"` 或 `"wide"`，默认 `"long"`
+
+**数据格式：**
+
+- **长格式**：每行一个 `(symbol, datetime, factor_name, factor_value)` 组合
+- **宽格式**：每行一个 `(symbol, datetime)` 时间点，多个因子作为列
+
 ## 关闭连接
 
 ```python
