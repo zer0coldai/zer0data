@@ -116,13 +116,23 @@ print(df)
 
 ```bash
 # 默认抓取 um（U 本位）并写入 zer0data.raw_exchange_info
-python scripts/fetch_exchange_info.py
+zer0data ingest-source exchange-info
 
 # 同时抓取 spot/um/cm
-python scripts/fetch_exchange_info.py --markets spot um cm
+zer0data ingest-source exchange-info --markets spot --markets um --markets cm
 
 # 仅测试网络与 JSON 结构，不写库
-python scripts/fetch_exchange_info.py --markets um --dry-run
+zer0data ingest-source exchange-info --markets um --dry-run
+```
+
+### 8. 导入 CoinMetrics 因子（全量或按币种）
+
+```bash
+# 全量币种导入到 zer0data.factors
+zer0data ingest-source coinmetrics
+
+# 仅导入部分币种并只做预览校验（前后行）
+zer0data ingest-source coinmetrics --symbols btc --symbols eth --dry-run --head 3 --tail 3
 ```
 
 详细文档请参考 [Docker 部署指南](docker/README.md)

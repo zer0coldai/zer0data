@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-"""Fetch Binance exchangeInfo JSON and store raw payloads in ClickHouse."""
-
 from __future__ import annotations
 
 import argparse
@@ -8,14 +5,14 @@ import hashlib
 import json
 import logging
 import os
-import socket
-import sys
-import time
-import urllib.error
-import urllib.request
 from datetime import datetime, timezone
 
-import clickhouse_connect
+from zer0data_ingestor.fetcher.core import (
+    get_clickhouse_client,
+    http_get_text,
+    setup_logging,
+)
+from zer0data_ingestor.fetcher.types import FetchResult
 
 MARKET_URLS = {
     "spot": "https://api.binance.com/api/v3/exchangeInfo",
@@ -25,44 +22,18 @@ MARKET_URLS = {
 
 TABLE_NAME = "raw_exchange_info"
 ENDPOINT = "exchangeInfo"
-logger = logging.getLogger("fetch_exchange_info")
+logger = logging.getLogger(__name__)
 
 
-def fetch_json(url: str, timeout: int, retries: int) -> tuple[int, str, int]:
-    """Fetch JSON from URL with retry on transient network errors."""
-    for attempt in range(retries):
-        start = time.perf_counter()
-        try:
-            with urllib.request.urlopen(url, timeout=timeout) as response:
-                payload = response.read().decode("utf-8")
-                latency_ms = int((time.perf_counter() - start) * 1000)
-                return response.status, payload, latency_ms
-        except urllib.error.HTTPError as exc:
-            raise RuntimeError(f"HTTP {exc.code} for {url}") from exc
-        except (urllib.error.URLError, TimeoutError, socket.timeout) as exc:
-            if attempt == retries - 1:
-                raise RuntimeError(f"Network error for {url}: {exc}") from exc
-            wait_seconds = attempt + 1
-            logger.warning(
-                "Network error for %s (attempt %d/%d): %s; retry in %ss",
-                url,
-                attempt + 1,
-                retries,
-                exc,
-                wait_seconds,
-            )
-            time.sleep(wait_seconds)
-    raise RuntimeError(f"Unexpected retry flow for {url}")
+def _env(*keys: str, default: str) -> str:
+    for key in keys:
+        value = os.getenv(key)
+        if value is not None and value != "":
+            return value
+    return default
 
 
 def parse_args() -> argparse.Namespace:
-    def _env(*keys: str, default: str) -> str:
-        for key in keys:
-            value = os.getenv(key)
-            if value is not None and value != "":
-                return value
-        return default
-
     parser = argparse.ArgumentParser(
         description="Fetch Binance exchangeInfo and store raw JSON into ClickHouse."
     )
@@ -73,18 +44,8 @@ def parse_args() -> argparse.Namespace:
         choices=["spot", "um", "cm"],
         help="Markets to fetch (default: um).",
     )
-    parser.add_argument(
-        "--timeout",
-        type=int,
-        default=20,
-        help="HTTP timeout seconds (default: 20).",
-    )
-    parser.add_argument(
-        "--retries",
-        type=int,
-        default=3,
-        help="HTTP retry count (default: 3).",
-    )
+    parser.add_argument("--timeout", type=int, default=20, help="HTTP timeout seconds (default: 20).")
+    parser.add_argument("--retries", type=int, default=3, help="HTTP retry count (default: 3).")
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -120,15 +81,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def setup_logging(log_level: str) -> None:
-    logging.basicConfig(
-        level=getattr(logging, log_level),
-        format="%(asctime)s %(levelname)s %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-
-
-def ensure_table_exists(client: clickhouse_connect.driver.client.Client, database: str) -> None:
+def ensure_table_exists(client, database: str) -> None:
     create_sql = f"""
     CREATE TABLE IF NOT EXISTS {database}.{TABLE_NAME}
     (
@@ -151,10 +104,7 @@ def ensure_table_exists(client: clickhouse_connect.driver.client.Client, databas
     client.command(create_sql)
 
 
-def insert_payloads(
-    client: clickhouse_connect.driver.client.Client,
-    rows: list[tuple[datetime, str, str, str, int, int, str, str, None]],
-) -> None:
+def insert_payloads(client, rows: list[tuple[datetime, str, str, str, int, int, str, str, None]]) -> None:
     client.insert(
         table=TABLE_NAME,
         data=rows,
@@ -172,11 +122,11 @@ def insert_payloads(
     )
 
 
-def main() -> int:
-    args = parse_args()
+def run(args: argparse.Namespace) -> FetchResult:
     setup_logging(args.log_level)
     pulled_at = datetime.now(timezone.utc)
     rows: list[tuple[datetime, str, str, str, int, int, str, str, None]] = []
+
     logger.info(
         "Start fetch: markets=%s timeout=%ss retries=%d dry_run=%s",
         ",".join(args.markets),
@@ -184,25 +134,12 @@ def main() -> int:
         args.retries,
         args.dry_run,
     )
-    logger.info(
-        "ClickHouse target host=%s port=%d db=%s user=%s table=%s",
-        args.clickhouse_host,
-        args.clickhouse_port,
-        args.clickhouse_db,
-        args.clickhouse_user,
-        TABLE_NAME,
-    )
 
     for market in args.markets:
         url = MARKET_URLS[market]
         logger.info("Fetching %s from %s", market, url)
-        status_code, payload, latency_ms = fetch_json(url, timeout=args.timeout, retries=args.retries)
-
-        try:
-            parsed = json.loads(payload)
-        except json.JSONDecodeError as exc:
-            raise RuntimeError(f"Invalid JSON from {url}: {exc}") from exc
-
+        status_code, payload, latency_ms = http_get_text(url, timeout=args.timeout, retries=args.retries)
+        parsed = json.loads(payload)
         symbols_count = len(parsed.get("symbols", []))
         assets_count = len(parsed.get("assets", []))
         payload_hash = hashlib.sha256(payload.encode("utf-8")).hexdigest()
@@ -232,32 +169,26 @@ def main() -> int:
 
     if args.dry_run:
         logger.info("Dry run only. Skip ClickHouse insert.")
-        return 0
+        return FetchResult(files_total=len(args.markets), files_ok=len(args.markets), rows_written=0, errors=0)
 
-    logger.info("Connecting ClickHouse")
-    client = clickhouse_connect.get_client(
-        host=args.clickhouse_host,
-        port=args.clickhouse_port,
-        username=args.clickhouse_user,
-        password=args.clickhouse_password,
-        database=args.clickhouse_db,
-    )
+    client = get_clickhouse_client(args)
     try:
-        logger.info("Ensuring table exists: %s.%s", args.clickhouse_db, TABLE_NAME)
         ensure_table_exists(client, args.clickhouse_db)
-        logger.info("Inserting %d row(s)", len(rows))
         insert_payloads(client, rows)
     finally:
         client.close()
-        logger.info("ClickHouse connection closed")
 
-    logger.info("Inserted %d row(s) into %s.%s", len(rows), args.clickhouse_db, TABLE_NAME)
+    return FetchResult(files_total=len(args.markets), files_ok=len(args.markets), rows_written=len(rows), errors=0)
+
+
+def main() -> int:
+    args = parse_args()
+    result = run(args)
+    logger.info(
+        "Done: files_total=%d files_ok=%d rows_written=%d errors=%d",
+        result.files_total,
+        result.files_ok,
+        result.rows_written,
+        result.errors,
+    )
     return 0
-
-
-if __name__ == "__main__":
-    try:
-        raise SystemExit(main())
-    except Exception as exc:  # pragma: no cover - CLI safety net
-        logger.error("Failed: %s", exc)
-        raise SystemExit(1)

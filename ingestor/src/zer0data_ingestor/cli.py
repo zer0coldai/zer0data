@@ -1,10 +1,13 @@
 """CLI interface for zer0data ingestor."""
 
 import logging
+from types import SimpleNamespace
 
 import click
 
 from zer0data_ingestor.config import IngestorConfig, ClickHouseConfig
+from zer0data_ingestor.fetcher.sources.coinmetrics import run as run_coinmetrics
+from zer0data_ingestor.fetcher.sources.exchange_info import run as run_exchange_info
 from zer0data_ingestor.ingestor import KlineIngestor
 
 
@@ -153,7 +156,7 @@ def ingest_from_dir(
                 force=force,
             )
 
-        click.echo(f"\nIngestion completed:")
+        click.echo("\nIngestion completed:")
         click.echo(f"  Files processed: {stats.files_processed}")
         click.echo(f"  Records written: {stats.records_written}")
         click.echo(f"  Duplicates removed: {stats.duplicates_removed}")
@@ -168,6 +171,105 @@ def ingest_from_dir(
     except Exception as e:
         click.echo(f"\nError during ingestion: {e}", err=True)
         raise click.ClickException(f"Ingestion failed: {e}")
+
+
+@cli.group()
+def ingest_source() -> None:
+    """Ingest data from external source providers."""
+
+
+def _fetcher_base_args(ctx: click.Context) -> dict:
+    config = ctx.obj["config"]
+    return {
+        "clickhouse_host": config.clickhouse.host,
+        "clickhouse_port": config.clickhouse.port,
+        "clickhouse_db": config.clickhouse.database,
+        "clickhouse_user": config.clickhouse.username or "default",
+        "clickhouse_password": config.clickhouse.password or "",
+    }
+
+
+@ingest_source.command("exchange-info")
+@click.option(
+    "--markets",
+    multiple=True,
+    default=("um",),
+    type=click.Choice(["spot", "um", "cm"]),
+    help="Markets to fetch (default: um). Can be repeated.",
+)
+@click.option("--timeout", type=int, default=20, show_default=True)
+@click.option("--retries", type=int, default=3, show_default=True)
+@click.option("--dry-run", is_flag=True, default=False)
+@click.pass_context
+def ingest_source_exchange_info(
+    ctx: click.Context,
+    markets: tuple[str, ...],
+    timeout: int,
+    retries: int,
+    dry_run: bool,
+) -> None:
+    """Fetch Binance exchangeInfo and ingest raw payloads."""
+    try:
+        args = SimpleNamespace(
+            **_fetcher_base_args(ctx),
+            markets=list(markets),
+            timeout=timeout,
+            retries=retries,
+            dry_run=dry_run,
+            log_level="INFO",
+        )
+        result = run_exchange_info(args)
+        click.echo(
+            f"exchange-info done: files_total={result.files_total} "
+            f"files_ok={result.files_ok} rows_written={result.rows_written} errors={result.errors}"
+        )
+    except Exception as exc:
+        raise click.ClickException(f"Source ingestion failed: {exc}") from exc
+
+
+@ingest_source.command("coinmetrics")
+@click.option(
+    "--symbols",
+    multiple=True,
+    help="Optional symbols to fetch (e.g. --symbols btc --symbols eth).",
+)
+@click.option("--timeout", type=int, default=30, show_default=True)
+@click.option("--retries", type=int, default=3, show_default=True)
+@click.option("--head", type=int, default=3, show_default=True)
+@click.option("--tail", type=int, default=3, show_default=True)
+@click.option("--batch-size", type=int, default=100000, show_default=True)
+@click.option("--dry-run", is_flag=True, default=False)
+@click.pass_context
+def ingest_source_coinmetrics(
+    ctx: click.Context,
+    symbols: tuple[str, ...],
+    timeout: int,
+    retries: int,
+    head: int,
+    tail: int,
+    batch_size: int,
+    dry_run: bool,
+) -> None:
+    """Fetch CoinMetrics CSV and ingest factors table."""
+    try:
+        args = SimpleNamespace(
+            **_fetcher_base_args(ctx),
+            symbols=list(symbols) if symbols else None,
+            timeout=timeout,
+            retries=retries,
+            head=head,
+            tail=tail,
+            batch_size=batch_size,
+            dry_run=dry_run,
+            log_level="INFO",
+        )
+        result = run_coinmetrics(args)
+        click.echo(
+            f"coinmetrics done: files_total={result.files_total} "
+            f"files_ok={result.files_ok} rows_written={result.rows_written} errors={result.errors}"
+        )
+    except Exception as exc:
+        raise click.ClickException(f"Source ingestion failed: {exc}") from exc
 
 
 if __name__ == "__main__":

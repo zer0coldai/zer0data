@@ -3,6 +3,8 @@
 import tempfile
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from click.testing import CliRunner
 
@@ -67,3 +69,101 @@ def test_cli_no_cleaner_interval_option():
 
     assert result.exit_code == 0
     assert "--cleaner-interval-ms" not in result.output
+
+
+def test_cli_has_ingest_source_group():
+    runner = CliRunner()
+    result = runner.invoke(cli, ["--help"])
+
+    assert result.exit_code == 0
+    assert "ingest-source" in result.output
+
+
+def test_ingest_source_help():
+    runner = CliRunner()
+    result = runner.invoke(cli, ["ingest-source", "--help"])
+
+    assert result.exit_code == 0
+    assert "exchange-info" in result.output
+    assert "coinmetrics" in result.output
+
+
+def test_ingest_source_exchange_info_calls_fetcher():
+    runner = CliRunner()
+
+    with patch("zer0data_ingestor.cli.run_exchange_info") as mock_run:
+        mock_run.return_value = SimpleNamespace(
+            files_total=1, files_ok=1, rows_written=1, errors=0
+        )
+        result = runner.invoke(
+            cli,
+            [
+                "--clickhouse-host",
+                "127.0.0.1",
+                "--clickhouse-port",
+                "9000",
+                "--clickhouse-db",
+                "testdb",
+                "--clickhouse-user",
+                "u1",
+                "--clickhouse-password",
+                "p1",
+                "ingest-source",
+                "exchange-info",
+                "--markets",
+                "um",
+                "--dry-run",
+            ],
+        )
+
+    assert result.exit_code == 0
+    called_args = mock_run.call_args[0][0]
+    assert called_args.clickhouse_host == "127.0.0.1"
+    assert called_args.clickhouse_port == 9000
+    assert called_args.clickhouse_db == "testdb"
+    assert called_args.clickhouse_user == "u1"
+    assert called_args.clickhouse_password == "p1"
+    assert called_args.markets == ["um"]
+    assert called_args.dry_run is True
+
+
+def test_ingest_source_coinmetrics_calls_fetcher():
+    runner = CliRunner()
+
+    with patch("zer0data_ingestor.cli.run_coinmetrics") as mock_run:
+        mock_run.return_value = SimpleNamespace(
+            files_total=2, files_ok=2, rows_written=100, errors=0
+        )
+        result = runner.invoke(
+            cli,
+            [
+                "ingest-source",
+                "coinmetrics",
+                "--symbols",
+                "btc",
+                "--symbols",
+                "eth",
+                "--head",
+                "2",
+                "--tail",
+                "2",
+                "--dry-run",
+            ],
+        )
+
+    assert result.exit_code == 0
+    called_args = mock_run.call_args[0][0]
+    assert called_args.symbols == ["btc", "eth"]
+    assert called_args.head == 2
+    assert called_args.tail == 2
+    assert called_args.dry_run is True
+
+
+def test_ingest_source_exchange_info_handles_fetch_error():
+    runner = CliRunner()
+
+    with patch("zer0data_ingestor.cli.run_exchange_info", side_effect=RuntimeError("boom")):
+        result = runner.invoke(cli, ["ingest-source", "exchange-info", "--markets", "um"])
+
+    assert result.exit_code != 0
+    assert "Source ingestion failed: boom" in result.output
