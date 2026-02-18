@@ -120,34 +120,44 @@ class FactorService:
         where_conditions.append(f"factor_name IN ({quoted_factor_names})")
 
         if start is not None:
-            where_conditions.append(f"datetime >= {self._parse_timestamp(start)}")
+            where_conditions.append(
+                f"datetime >= {self._to_datetime_expr(start)}"
+            )
 
         if end is not None:
-            where_conditions.append(f"datetime <= {self._parse_timestamp(end)}")
+            where_conditions.append(
+                f"datetime <= {self._to_datetime_expr(end)}"
+            )
 
         return " AND ".join(where_conditions)
 
-    def _parse_timestamp(self, timestamp: Union[str, int, datetime]) -> int:
+    def _to_datetime_expr(self, timestamp: Union[str, int, datetime]) -> str:
+        """Convert supported timestamp input to ClickHouse UTC DateTime expression."""
+        seconds = self._parse_timestamp_seconds(timestamp)
+        return f"toDateTime({seconds}, 'UTC')"
+
+    def _parse_timestamp_seconds(self, timestamp: Union[str, int, datetime]) -> int:
         """
-        Parse timestamp to Unix milliseconds
+        Parse timestamp to Unix seconds.
 
         Args:
-            timestamp: ISO format string or Unix timestamp in ms
+            timestamp: ISO format string or Unix timestamp (seconds or milliseconds)
 
         Returns:
-            Unix timestamp in milliseconds
+            Unix timestamp in seconds
         """
         if isinstance(timestamp, datetime):
             if timestamp.tzinfo is None:
                 timestamp = timestamp.replace(tzinfo=timezone.utc)
-            return int(timestamp.timestamp() * 1000)
+            return int(timestamp.timestamp())
 
-        # If it's numeric, treat as milliseconds
+        # Numeric input: support seconds or milliseconds.
         if isinstance(timestamp, int):
-            return timestamp
+            return timestamp // 1000 if timestamp > 10_000_000_000 else timestamp
 
         try:
-            return int(timestamp)
+            value = int(timestamp)
+            return value // 1000 if value > 10_000_000_000 else value
         except (TypeError, ValueError):
             # Support ISO strings like "2024-01-01" and "2024-01-01T00:00:00Z"
             ts = str(timestamp)
@@ -156,4 +166,4 @@ class FactorService:
             dt = datetime.fromisoformat(ts)
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=timezone.utc)
-            return int(dt.timestamp() * 1000)
+            return int(dt.timestamp())

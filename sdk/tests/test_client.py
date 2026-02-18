@@ -546,6 +546,8 @@ def test_factor_build_where_clause():
     assert "factor_name IN ('price_usd')" in where
     assert "datetime >=" in where
     assert "datetime <=" in where
+    assert "datetime >= toDateTime(1704067200, 'UTC')" in where
+    assert "datetime <= toDateTime(1704153600, 'UTC')" in where
 
 
 def test_factor_query_empty_symbols_raises_error(monkeypatch):
