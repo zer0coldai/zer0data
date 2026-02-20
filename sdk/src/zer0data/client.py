@@ -157,6 +157,10 @@ class Client:
             format=format,
         )
 
+    def write_factors(self, data: pl.DataFrame, source: str = "sdk") -> int:
+        """Direct SDK entrypoint for writing factor data."""
+        return self.factors.write(data=data, source=source)
+
     def __enter__(self):
         """Context manager entry"""
         return self

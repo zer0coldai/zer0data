@@ -107,6 +107,31 @@ df_wide = client.get_factors(
 - **长格式**：每行一个 `(symbol, datetime, factor_name, factor_value)` 组合
 - **宽格式**：每行一个 `(symbol, datetime)` 时间点，多个因子作为列
 
+## `Client.write_factors(...)`
+
+写入 long 格式因子数据到 `zer0data.factors`，返回写入行数 `int`。
+
+```python
+import polars as pl
+
+rows = pl.DataFrame(
+    {
+        "symbol": ["BTCUSDT", "ETHUSDT"],
+        "datetime": ["2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z"],
+        "factor_name": ["price_usd", "price_usd"],
+        "factor_value": [42500.5, 2250.75],
+    }
+)
+
+written = client.write_factors(rows, source="sdk")
+print(written)  # 2
+```
+
+参数说明：
+
+- `data`: `polars.DataFrame` - 必须包含 `symbol`, `datetime`, `factor_name`, `factor_value`
+- `source`: `str` - 数据来源标记，默认 `"sdk"`
+
 ## 关闭连接
 
 ```python

@@ -3,6 +3,7 @@ Tests for zer0data Client
 """
 
 import pytest
+import polars as pl
 from zer0data import Client, ClientConfig
 
 
@@ -282,6 +283,124 @@ def test_client_from_env_factory(monkeypatch):
 
 
 # FactorService tests
+
+
+def test_factor_write_success_returns_row_count(monkeypatch):
+    """FactorService.write should validate and write long-format factor rows."""
+    from zer0data import factor as factor_module
+
+    class _MockCHClient:
+        def __init__(self):
+            self.calls = []
+
+        def close(self):
+            return None
+
+        def insert(self, table, data, column_names=None):
+            self.calls.append((table, data, column_names))
+
+    mock_client = _MockCHClient()
+    monkeypatch.setattr(
+        factor_module.clickhouse_connect, "get_client", lambda **_: mock_client
+    )
+
+    from zer0data import Client
+
+    client = Client()
+    rows = pl.DataFrame(
+        {
+            "symbol": ["BTCUSDT", "ETHUSDT"],
+            "datetime": ["2024-01-01T00:00:00Z", "2024-01-01T00:00:00Z"],
+            "factor_name": ["price_usd", "price_usd"],
+            "factor_value": [42500.5, 2250.75],
+        }
+    )
+
+    written = client.write_factors(rows, source="sdk-test")
+
+    assert written == 2
+    assert len(mock_client.calls) == 1
+    table, data, columns = mock_client.calls[0]
+    assert table == "zer0data.factors"
+    assert columns == [
+        "symbol",
+        "datetime",
+        "factor_name",
+        "factor_value",
+        "source",
+        "update_time",
+    ]
+    assert len(data) == 2
+    assert data[0][0] == "BTCUSDT"
+    assert data[0][2] == "price_usd"
+    assert data[0][4] == "sdk-test"
+    client.close()
+
+
+def test_factor_write_missing_required_columns_raises_error(monkeypatch):
+    """FactorService.write should reject missing required columns."""
+    from zer0data import factor as factor_module
+
+    class _MockCHClient:
+        def close(self):
+            return None
+
+        def insert(self, table, data, column_names=None):
+            return None
+
+    monkeypatch.setattr(
+        factor_module.clickhouse_connect, "get_client", lambda **_: _MockCHClient()
+    )
+
+    from zer0data import Client
+
+    client = Client()
+    rows = pl.DataFrame(
+        {
+            "symbol": ["BTCUSDT"],
+            "datetime": ["2024-01-01T00:00:00Z"],
+            "factor_name": ["price_usd"],
+        }
+    )
+
+    with pytest.raises(ValueError, match="missing required columns"):
+        client.write_factors(rows)
+
+    client.close()
+
+
+def test_factor_write_empty_dataframe_raises_error(monkeypatch):
+    """FactorService.write should reject empty input."""
+    from zer0data import factor as factor_module
+
+    class _MockCHClient:
+        def close(self):
+            return None
+
+        def insert(self, table, data, column_names=None):
+            return None
+
+    monkeypatch.setattr(
+        factor_module.clickhouse_connect, "get_client", lambda **_: _MockCHClient()
+    )
+
+    from zer0data import Client
+
+    client = Client()
+
+    with pytest.raises(ValueError, match="must be a non-empty DataFrame"):
+        client.write_factors(
+            pl.DataFrame(
+                schema={
+                    "symbol": pl.String,
+                    "datetime": pl.String,
+                    "factor_name": pl.String,
+                    "factor_value": pl.Float64,
+                }
+            )
+        )
+
+    client.close()
 
 
 def test_factor_query_long_format(monkeypatch):
@@ -643,6 +762,43 @@ def test_client_get_factors_delegates_to_factor_service(monkeypatch):
         "end": "2024-01-02",
         "format": "wide",
     }
+    client.close()
+
+
+def test_client_write_factors_delegates_to_factor_service(monkeypatch):
+    """Client should provide a direct factor write entrypoint."""
+    from zer0data import client as client_module
+
+    class _MockCHClient:
+        def close(self):
+            return None
+
+    monkeypatch.setattr(client_module.clickhouse_connect, "get_client", lambda **_: _MockCHClient())
+    from zer0data import Client
+
+    client = Client()
+    calls = {}
+
+    def _fake_write(data, source="sdk"):
+        calls["data"] = data
+        calls["source"] = source
+        return 7
+
+    monkeypatch.setattr(client.factors, "write", _fake_write)
+    rows = pl.DataFrame(
+        {
+            "symbol": ["BTCUSDT"],
+            "datetime": ["2024-01-01T00:00:00Z"],
+            "factor_name": ["price_usd"],
+            "factor_value": [42500.5],
+        }
+    )
+
+    written = client.write_factors(rows, source="sdk")
+
+    assert written == 7
+    assert calls["data"].shape == (1, 4)
+    assert calls["source"] == "sdk"
     client.close()
 
 

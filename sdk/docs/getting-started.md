@@ -55,6 +55,28 @@ print(df.head())
 client.close()
 ```
 
+### 写入因子数据
+
+```python
+import polars as pl
+from zer0data import Client
+
+client = Client.from_env()
+
+rows = pl.DataFrame(
+    {
+        "symbol": ["BTCUSDT"],
+        "datetime": ["2024-01-01T00:00:00Z"],
+        "factor_name": ["price_usd"],
+        "factor_value": [42500.5],
+    }
+)
+
+written = client.write_factors(rows, source="sdk")
+print(written)  # 1
+client.close()
+```
+
 ## 3. 最小连通性检查
 
 ```python

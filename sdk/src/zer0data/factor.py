@@ -81,6 +81,80 @@ class FactorService:
 
         return df
 
+    def write(self, data: pl.DataFrame, source: str = "sdk") -> int:
+        """
+        Write long-format factor rows into ClickHouse.
+
+        Args:
+            data: Polars DataFrame with required columns:
+                symbol, datetime, factor_name, factor_value
+            source: Source marker written to the source column
+
+        Returns:
+            Number of rows written.
+
+        Raises:
+            ValueError: If input is empty, missing required columns, or has invalid values.
+        """
+        if not isinstance(data, pl.DataFrame) or data.height == 0:
+            raise ValueError("data must be a non-empty DataFrame")
+
+        if not isinstance(source, str) or source.strip() == "":
+            raise ValueError("source must be a non-empty string")
+        normalized_source = source.strip()
+
+        required_columns = {"symbol", "datetime", "factor_name", "factor_value"}
+        missing_columns = sorted(required_columns - set(data.columns))
+        if missing_columns:
+            raise ValueError(f"missing required columns: {', '.join(missing_columns)}")
+
+        narrowed = data.select(["symbol", "datetime", "factor_name", "factor_value"])
+        update_time = datetime.now(timezone.utc)
+        rows = []
+
+        for idx, row in enumerate(narrowed.iter_rows(named=True)):
+            symbol = row["symbol"]
+            factor_name = row["factor_name"]
+            if symbol is None or str(symbol).strip() == "":
+                raise ValueError(f"invalid symbol at row {idx}")
+            if factor_name is None or str(factor_name).strip() == "":
+                raise ValueError(f"invalid factor_name at row {idx}")
+
+            try:
+                factor_value = float(row["factor_value"])
+            except (TypeError, ValueError):
+                raise ValueError(f"invalid factor_value at row {idx}") from None
+
+            try:
+                dt = self._coerce_datetime_utc(row["datetime"])
+            except (TypeError, ValueError):
+                raise ValueError(f"invalid datetime at row {idx}") from None
+
+            rows.append(
+                (
+                    str(symbol),
+                    dt,
+                    str(factor_name),
+                    factor_value,
+                    normalized_source,
+                    update_time,
+                )
+            )
+
+        self._client.insert(
+            f"{self._database}.factors",
+            rows,
+            column_names=[
+                "symbol",
+                "datetime",
+                "factor_name",
+                "factor_value",
+                "source",
+                "update_time",
+            ],
+        )
+        return len(rows)
+
     def _normalize_symbols(self, symbols: Union[str, list[str]]) -> list[str]:
         """Normalize and validate symbols input."""
         if isinstance(symbols, str):
@@ -135,6 +209,30 @@ class FactorService:
         """Convert supported timestamp input to ClickHouse UTC DateTime expression."""
         seconds = self._parse_timestamp_seconds(timestamp)
         return f"toDateTime({seconds}, 'UTC')"
+
+    def _coerce_datetime_utc(self, timestamp: Union[str, int, datetime]) -> datetime:
+        """Coerce supported timestamp inputs into timezone-aware UTC datetime."""
+        if isinstance(timestamp, datetime):
+            if timestamp.tzinfo is None:
+                return timestamp.replace(tzinfo=timezone.utc)
+            return timestamp.astimezone(timezone.utc)
+
+        if isinstance(timestamp, int):
+            value = timestamp / 1000 if timestamp > 10_000_000_000 else timestamp
+            return datetime.fromtimestamp(value, tz=timezone.utc)
+
+        ts = str(timestamp)
+        try:
+            value = int(ts)
+            value = value / 1000 if value > 10_000_000_000 else value
+            return datetime.fromtimestamp(value, tz=timezone.utc)
+        except ValueError:
+            if ts.endswith("Z"):
+                ts = ts[:-1] + "+00:00"
+            dt = datetime.fromisoformat(ts)
+            if dt.tzinfo is None:
+                return dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc)
 
     def _parse_timestamp_seconds(self, timestamp: Union[str, int, datetime]) -> int:
         """
