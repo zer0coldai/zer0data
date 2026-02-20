@@ -44,7 +44,7 @@ Environment variables:
 - `Client.get_klines(...)`: direct kline query entrypoint, returns `polars.DataFrame`
 - `Client.get_symbols(market="um", quote_asset=None, exclude_stable_base=False)`: query latest symbol metadata from `raw_exchange_info`, returns `polars.DataFrame`
 - `Client.get_factors(...)`: query factor data from `zer0data.factors`, returns `polars.DataFrame`
-- `Client.write_factors(data, source="sdk")`: write long-format factor rows into `zer0data.factors`, returns written row count
+- `Client.write_factors(data, source="sdk")`: write long-format factor rows into `zer0data.factors` (supports polars/pandas DataFrame), returns written row count
 - `Client.kline.query(...)`: lower-level service call
 - `Client.kline.query_stream(...)`: batch stream query for large ranges
 

@@ -403,6 +403,57 @@ def test_factor_write_empty_dataframe_raises_error(monkeypatch):
     client.close()
 
 
+def test_factor_write_accepts_pandas_dataframe(monkeypatch):
+    """FactorService.write should accept pandas DataFrame input."""
+    pd = pytest.importorskip("pandas")
+    from zer0data import factor as factor_module
+
+    class _MockCHClient:
+        def __init__(self):
+            self.calls = []
+
+        def close(self):
+            return None
+
+        def insert(self, table, data, column_names=None):
+            self.calls.append((table, data, column_names))
+
+    mock_client = _MockCHClient()
+    monkeypatch.setattr(
+        factor_module.clickhouse_connect, "get_client", lambda **_: mock_client
+    )
+
+    from zer0data import Client
+
+    client = Client()
+    rows = pd.DataFrame(
+        {
+            "symbol": ["BTCUSDT"],
+            "datetime": ["2024-01-01T00:00:00Z"],
+            "factor_name": ["price_usd"],
+            "factor_value": [42500.5],
+        }
+    )
+
+    written = client.write_factors(rows, source="sdk-pandas")
+
+    assert written == 1
+    assert len(mock_client.calls) == 1
+    table, data, columns = mock_client.calls[0]
+    assert table == "zer0data.factors"
+    assert columns == [
+        "symbol",
+        "datetime",
+        "factor_name",
+        "factor_value",
+        "source",
+        "update_time",
+    ]
+    assert data[0][0] == "BTCUSDT"
+    assert data[0][4] == "sdk-pandas"
+    client.close()
+
+
 def test_factor_query_long_format(monkeypatch):
     """Test FactorService.query with long format (default)."""
     from zer0data import factor as factor_module

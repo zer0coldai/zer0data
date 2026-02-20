@@ -129,7 +129,7 @@ print(written)  # 2
 
 参数说明：
 
-- `data`: `polars.DataFrame` - 必须包含 `symbol`, `datetime`, `factor_name`, `factor_value`
+- `data`: `polars.DataFrame | pandas.DataFrame` - 必须包含 `symbol`, `datetime`, `factor_name`, `factor_value`
 - `source`: `str` - 数据来源标记，默认 `"sdk"`
 
 ## 关闭连接

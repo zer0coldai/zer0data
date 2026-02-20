@@ -81,12 +81,12 @@ class FactorService:
 
         return df
 
-    def write(self, data: pl.DataFrame, source: str = "sdk") -> int:
+    def write(self, data, source: str = "sdk") -> int:
         """
         Write long-format factor rows into ClickHouse.
 
         Args:
-            data: Polars DataFrame with required columns:
+            data: Polars or pandas DataFrame with required columns:
                 symbol, datetime, factor_name, factor_value
             source: Source marker written to the source column
 
@@ -96,7 +96,8 @@ class FactorService:
         Raises:
             ValueError: If input is empty, missing required columns, or has invalid values.
         """
-        if not isinstance(data, pl.DataFrame) or data.height == 0:
+        normalized_data = self._normalize_write_dataframe(data)
+        if normalized_data.height == 0:
             raise ValueError("data must be a non-empty DataFrame")
 
         if not isinstance(source, str) or source.strip() == "":
@@ -104,11 +105,11 @@ class FactorService:
         normalized_source = source.strip()
 
         required_columns = {"symbol", "datetime", "factor_name", "factor_value"}
-        missing_columns = sorted(required_columns - set(data.columns))
+        missing_columns = sorted(required_columns - set(normalized_data.columns))
         if missing_columns:
             raise ValueError(f"missing required columns: {', '.join(missing_columns)}")
 
-        narrowed = data.select(["symbol", "datetime", "factor_name", "factor_value"])
+        narrowed = normalized_data.select(["symbol", "datetime", "factor_name", "factor_value"])
         update_time = datetime.now(timezone.utc)
         rows = []
 
@@ -154,6 +155,21 @@ class FactorService:
             ],
         )
         return len(rows)
+
+    def _normalize_write_dataframe(self, data) -> pl.DataFrame:
+        """Normalize write input into a polars DataFrame."""
+        if isinstance(data, pl.DataFrame):
+            return data
+
+        try:
+            import pandas as pd  # type: ignore
+        except ImportError:
+            pd = None
+
+        if pd is not None and isinstance(data, pd.DataFrame):
+            return pl.from_pandas(data)
+
+        raise ValueError("data must be a non-empty DataFrame")
 
     def _normalize_symbols(self, symbols: Union[str, list[str]]) -> list[str]:
         """Normalize and validate symbols input."""
