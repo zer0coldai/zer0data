@@ -110,6 +110,7 @@ df_wide = client.get_factors(
 ## `Client.write_factors(...)`
 
 写入 long 格式因子数据到 `zer0data.factors`，返回写入行数 `int`。
+默认会跳过 `factor_value` 中的 `NaN`、`inf`、`-inf` 和非数字值。
 
 ```python
 import polars as pl

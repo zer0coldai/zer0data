@@ -3,6 +3,7 @@ Factor Service - Query factor data from ClickHouse
 """
 
 from datetime import datetime, timezone
+import math
 from typing import Optional, Union
 import polars as pl
 import clickhouse_connect
@@ -94,7 +95,7 @@ class FactorService:
             Number of rows written.
 
         Raises:
-            ValueError: If input is empty, missing required columns, or has invalid values.
+            ValueError: If input is empty, missing required columns, or has invalid symbol/factor_name/datetime.
         """
         normalized_data = self._normalize_write_dataframe(data)
         if normalized_data.height == 0:
@@ -124,7 +125,9 @@ class FactorService:
             try:
                 factor_value = float(row["factor_value"])
             except (TypeError, ValueError):
-                raise ValueError(f"invalid factor_value at row {idx}") from None
+                continue
+            if not math.isfinite(factor_value):
+                continue
 
             try:
                 dt = self._coerce_datetime_utc(row["datetime"])
@@ -141,6 +144,9 @@ class FactorService:
                     update_time,
                 )
             )
+
+        if not rows:
+            return 0
 
         self._client.insert(
             f"{self._database}.factors",

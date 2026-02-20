@@ -454,6 +454,53 @@ def test_factor_write_accepts_pandas_dataframe(monkeypatch):
     client.close()
 
 
+def test_factor_write_drops_invalid_factor_values(monkeypatch):
+    """FactorService.write should drop NaN/inf/invalid factor_value rows by default."""
+    from zer0data import factor as factor_module
+
+    class _MockCHClient:
+        def __init__(self):
+            self.calls = []
+
+        def close(self):
+            return None
+
+        def insert(self, table, data, column_names=None):
+            self.calls.append((table, data, column_names))
+
+    mock_client = _MockCHClient()
+    monkeypatch.setattr(
+        factor_module.clickhouse_connect, "get_client", lambda **_: mock_client
+    )
+
+    from zer0data import Client
+
+    client = Client()
+    rows = pl.DataFrame(
+        {
+            "symbol": ["BTCUSDT", "BTCUSDT", "BTCUSDT", "BTCUSDT"],
+            "datetime": [
+                "2024-01-01T00:00:00Z",
+                "2024-01-01T01:00:00Z",
+                "2024-01-01T02:00:00Z",
+                "2024-01-01T03:00:00Z",
+            ],
+            "factor_name": ["price_usd", "price_usd", "price_usd", "price_usd"],
+            "factor_value": [None, float("nan"), float("inf"), 42500.5],
+        }
+    )
+
+    written = client.write_factors(rows, source="sdk-clean")
+
+    assert written == 1
+    assert len(mock_client.calls) == 1
+    table, data, _ = mock_client.calls[0]
+    assert table == "zer0data.factors"
+    assert len(data) == 1
+    assert data[0][3] == 42500.5
+    client.close()
+
+
 def test_factor_query_long_format(monkeypatch):
     """Test FactorService.query with long format (default)."""
     from zer0data import factor as factor_module
