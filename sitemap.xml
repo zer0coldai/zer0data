@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url>
+         <loc>https://zer0coldai.github.io/zer0data/</loc>
+         <lastmod>2026-02-20</lastmod>
+    </url>
+    <url>
+         <loc>https://zer0coldai.github.io/zer0data/changelog/</loc>
+         <lastmod>2026-02-20</lastmod>
+    </url>
+    <url>
+         <loc>https://zer0coldai.github.io/zer0data/configuration/</loc>
+         <lastmod>2026-02-20</lastmod>
+    </url>
+    <url>
+         <loc>https://zer0coldai.github.io/zer0data/deployment/</loc>
+         <lastmod>2026-02-20</lastmod>
+    </url>
+    <url>
+         <loc>https://zer0coldai.github.io/zer0data/faq/</loc>
+         <lastmod>2026-02-20</lastmod>
+    </url>
+    <url>
+         <loc>https://zer0coldai.github.io/zer0data/getting-started/</loc>
+         <lastmod>2026-02-20</lastmod>
+    </url>
+    <url>
+         <loc>https://zer0coldai.github.io/zer0data/installation/</loc>
+         <lastmod>2026-02-20</lastmod>
+    </url>
+    <url>
+         <loc>https://zer0coldai.github.io/zer0data/api/client/</loc>
+         <lastmod>2026-02-20</lastmod>
+    </url>
+</urlset>
